@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AIDB 7.8 Introspector — EDB</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/sql-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+<style>
+  :root{
+    --blue-coal:#28495A; --deep:#1E3D4A; --abyss:#0D1E25; --slate:#567F8D;
+    --mist:#A8C2CA; --frost:#E8F2F5; --gold:#E7C568; --green:#05825F;
+    --coral:#E96F4C; --white:#FFFFFF; --line:rgba(168,194,202,.16);
+    --disp:'Roboto Condensed',Arial Narrow,sans-serif; --body:'Roboto',system-ui,sans-serif; --mono:'Roboto Mono',ui-monospace,Menlo,monospace;
+    /* category colours — used by the surface map, legend and badges */
+    --c-models:#7FB3D5; --c-agents:#E7C568; --c-tools:#F2A65A; --c-semantic:#B39DDB;
+    --c-catalog:#9CCC65; --c-kb:#4DB6AC; --c-pipe:#E96F4C; --c-prep:#F48FB1;
+    --c-vol:#90A4AE; --c-config:#567F8D; --c-gov:#FFD54F; --c-bdr:#81D4FA; --c-internal:#3B5561; --c-other:#A8C2CA; --c-cred:#EF9A9A;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{font-family:var(--body);background:var(--abyss);color:var(--white);font-size:14px;line-height:1.5;}
+  button,input,select,textarea{font:inherit;}
+  :focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+
+  .app{display:grid;grid-template-columns:280px 1fr;min-height:100vh;}
+  /* ---------- sidebar ---------- */
+  aside{background:var(--deep);padding:22px 20px;border-right:1px solid var(--line);position:sticky;top:0;height:100vh;overflow-y:auto;}
+  .brand{font-family:var(--disp);font-weight:700;font-size:24px;line-height:1.1;margin:0 0 2px;}
+  .brand small{display:block;font-family:var(--body);font-weight:400;font-size:12.5px;color:var(--mist);margin-top:4px;}
+  .ver{display:inline-block;margin-top:10px;font-family:var(--mono);font-size:12px;background:var(--abyss);color:var(--gold);border-radius:6px;padding:3px 8px;}
+  .conn{margin:20px 0 18px;display:grid;grid-template-columns:1fr 72px;gap:8px 8px;}
+  .conn .full{grid-column:1/-1;}
+  label.f{display:block;font-size:11.5px;color:var(--mist);margin-bottom:3px;}
+  input[type=text],input[type=password],input[type=search],select,textarea{
+    width:100%;background:var(--abyss);border:1.5px solid var(--slate);border-radius:7px;color:var(--white);
+    font-family:var(--mono);font-size:12.5px;padding:7px 9px;outline:none;
+  }
+  input:focus,select:focus,textarea:focus{border-color:var(--gold);}
+  input::placeholder,textarea::placeholder{color:#4d6c77;}
+  .chkline{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mist);margin-top:2px;}
+  .chkline input{accent-color:var(--gold);}
+  .btn{font-family:var(--disp);font-weight:700;font-size:14px;background:var(--gold);color:var(--blue-coal);border:none;border-radius:8px;padding:9px 16px;cursor:pointer;}
+  .btn:hover{background:#f0d387;}
+  .btn:disabled{opacity:.5;cursor:default;}
+  .btn.ghost{background:transparent;color:var(--white);border:1.5px solid var(--slate);}
+  .btn.ghost:hover{border-color:var(--gold);color:var(--gold);}
+  .btn.small{font-size:12.5px;padding:5px 11px;border-radius:6px;}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;}
+  .status{font-size:12px;color:var(--mist);margin-top:10px;min-height:18px;white-space:pre-wrap;word-break:break-word;}
+  .status.err{color:#f6b8a4;}
+  nav{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;}
+  nav button{display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:none;color:var(--mist);
+    text-align:left;padding:8px 10px;border-radius:7px;cursor:pointer;font-family:var(--disp);font-size:15.5px;}
+  nav button:hover{color:var(--white);background:rgba(255,255,255,.04);}
+  nav button.on{background:var(--blue-coal);color:var(--white);}
+  nav button .n{font-family:var(--mono);font-size:11.5px;color:var(--slate);}
+  nav button.on .n{color:var(--gold);}
+  nav button:disabled{opacity:.35;cursor:default;}
+
+  /* ---------- main ---------- */
+  main{padding:28px 36px 64px;min-width:0;}
+  .view{display:none;max-width:1180px;}
+  .view.on{display:block;}
+  h1{font-family:var(--disp);font-weight:700;font-size:34px;margin:0 0 4px;letter-spacing:-.01em;}
+  h2{font-family:var(--disp);font-weight:700;font-size:21px;margin:30px 0 10px;}
+  .lede{color:var(--mist);max-width:72ch;margin:0 0 20px;}
+  .notice{border:1px solid var(--coral);background:rgba(233,111,76,.1);color:#f6d2c4;border-radius:8px;padding:9px 13px;font-family:var(--mono);font-size:12px;margin-bottom:8px;}
+  .empty{border:1.5px dashed var(--slate);border-radius:12px;padding:40px;color:var(--mist);text-align:center;}
+  .empty strong{display:block;font-family:var(--disp);font-size:20px;color:var(--white);margin-bottom:6px;}
+
+  /* overview */
+  .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:26px;}
+  .fact{background:var(--deep);padding:14px 16px;}
+  .fact .k{font-size:12px;color:var(--mist);}
+  .fact .v{font-family:var(--mono);font-size:14px;margin-top:2px;word-break:break-word;}
+  .fact .v.warn{color:var(--coral);}
+  .fact .v.good{color:#7fd8b5;}
+  .map{display:flex;flex-wrap:wrap;gap:3px;padding:16px;background:var(--deep);border-radius:12px;}
+  .tick{width:14px;height:30px;border-radius:3px;border:none;padding:0;cursor:pointer;opacity:.92;}
+  .tick:hover{opacity:1;transform:scaleY(1.15);}
+  .tick.agg{border-radius:7px;}
+  .maptip{font-family:var(--mono);font-size:12.5px;color:var(--mist);min-height:22px;margin:8px 2px 0;}
+  .legend{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 22px;margin-top:16px;}
+  .lg{display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:10px;padding:5px 0;background:none;border:none;color:var(--white);text-align:left;cursor:pointer;border-bottom:1px solid var(--line);}
+  .lg:hover .lgname{color:var(--gold);}
+  .sw{width:12px;height:12px;border-radius:3px;}
+  .lgname{font-size:13.5px;}
+  .lgn{font-family:var(--mono);font-size:12px;color:var(--mist);}
+
+  /* toolbar */
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;position:sticky;top:0;background:var(--abyss);padding:10px 0;z-index:2;}
+  .toolbar input[type=search]{max-width:320px;}
+  .toolbar select{width:auto;}
+  .count{font-family:var(--mono);font-size:12px;color:var(--mist);margin-left:auto;}
+
+  /* function list */
+  .grp{margin-bottom:20px;}
+  .grp-h{display:flex;align-items:center;gap:10px;font-family:var(--disp);font-weight:700;font-size:17px;margin:0 0 6px;}
+  .grp-h .n{font-family:var(--mono);font-size:12px;color:var(--mist);font-weight:400;}
+  .fn{border-bottom:1px solid var(--line);}
+  .fn-row{display:grid;grid-template-columns:6px minmax(180px,260px) 1fr auto;gap:12px;align-items:baseline;width:100%;background:none;border:none;color:inherit;text-align:left;padding:8px 6px;cursor:pointer;}
+  .fn-row:hover{background:rgba(255,255,255,.03);}
+  .fn-row .bar{align-self:stretch;border-radius:2px;}
+  .fn-name{font-family:var(--mono);font-size:13px;color:var(--white);word-break:break-all;}
+  .fn-args{font-family:var(--mono);font-size:11.5px;color:var(--slate);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .fn-ret{font-family:var(--mono);font-size:11.5px;color:var(--mist);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .fn-detail{display:none;padding:6px 18px 20px 24px;}
+  .fn.open .fn-detail{display:block;}
+  .fn.open .fn-row{background:rgba(255,255,255,.04);}
+  .badges{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px;}
+  .b{font-family:var(--mono);font-size:11px;border-radius:5px;padding:2px 7px;background:var(--deep);color:var(--mist);border:1px solid var(--line);}
+  .b.gold{color:var(--gold);border-color:rgba(231,197,104,.4);}
+  .b.coral{color:var(--coral);border-color:rgba(233,111,76,.45);}
+  .b.green{color:#7fd8b5;border-color:rgba(5,130,95,.6);}
+  .desc{color:var(--mist);max-width:80ch;margin:0 0 10px;}
+
+  /* tables */
+  .tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin:8px 0 14px;max-height:520px;overflow-y:auto;}
+  table.t{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;}
+  table.t th{position:sticky;top:0;background:var(--blue-coal);text-align:left;color:var(--gold);font-weight:500;padding:6px 10px;white-space:nowrap;}
+  table.t td{padding:5px 10px;border-top:1px solid var(--line);color:var(--frost);vertical-align:top;max-width:460px;}
+  table.t td .clip{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:460px;}
+  table.t td.null{color:#4d6c77;}
+  table.t td.def{color:var(--slate);}
+  pre.code{background:#08161b;border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--mist);overflow-x:auto;white-space:pre;margin:8px 0 12px;}
+  pre.code .kw{color:#7FB3D5;} pre.code .str{color:#A8D8B9;} pre.code .cm{color:#4d6c77;}
+
+  /* relations/types/inventory cards */
+  .item{border-top:1px solid var(--line);padding:14px 0;}
+  .item-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .item-h .nm{font-family:var(--mono);font-size:14px;color:var(--white);}
+  .item-h .meta{font-size:12px;color:var(--mist);}
+  .item-h .btnrow{margin-left:auto;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .chip{font-family:var(--mono);font-size:11.5px;background:var(--deep);color:var(--frost);border-radius:5px;padding:3px 8px;}
+  .err{color:#f6b8a4;font-family:var(--mono);font-size:12px;white-space:pre-wrap;}
+  .muted{color:var(--slate);}
+  .inv-h{display:flex;align-items:baseline;gap:10px;}
+  .inv-h h2{margin:26px 0 4px;}
+  .inv-h .n{font-family:var(--mono);color:var(--mist);font-size:12px;}
+  details.sql summary{cursor:pointer;color:var(--slate);font-size:12px;}
+  /* models */
+  .mgrid{display:grid;grid-template-columns:minmax(200px,1.2fr) minmax(150px,.8fr) minmax(160px,1fr) 2fr auto;gap:0 16px;align-items:stretch;}
+  .mhead{font-size:12px;color:var(--mist);padding:6px 0;border-bottom:1px solid var(--line);}
+  .mrow{display:contents;}
+  .mrow > *{padding:9px 0;border-bottom:1px solid var(--line);}
+  .mname{font-family:var(--mono);font-size:13px;word-break:break-all;}
+  .mprov{font-family:var(--mono);font-size:12px;color:var(--mist);}
+  .cap{font-family:var(--mono);font-size:11px;border-radius:5px;padding:2px 7px;margin:0 4px 4px 0;display:inline-block;color:var(--abyss);}
+  .mfacts{font-family:var(--mono);font-size:11.5px;color:var(--frost);line-height:1.6;}
+  .mfacts .k{color:var(--slate);}
+  .mact{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
+  .mcfg{grid-column:1/-1;display:none;}
+  .mcfg.on{display:block;}
+  .msum{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px;}
+  @media (max-width:900px){ .mgrid{grid-template-columns:1fr;} .mhead{display:none;} .mact{justify-content:flex-start;} }
+
+  /* SQL editor */
+  #v-console.on{max-width:none;}
+  .edbar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin:0 0 10px;}
+  .seg{display:inline-flex;border:1.5px solid var(--slate);border-radius:8px;overflow:hidden;}
+  .seg button{background:transparent;border:none;color:var(--mist);padding:6px 12px;cursor:pointer;font-family:var(--disp);font-size:13.5px;}
+  .seg button.on{background:var(--blue-coal);color:var(--gold);}
+  .edbar select{width:auto;padding:5px 8px;}
+  .edwrap{border:1.5px solid var(--slate);border-radius:10px;overflow:hidden;}
+  .edwrap:focus-within{border-color:var(--gold);}
+  textarea#consoleSql{min-height:190px;resize:vertical;line-height:1.55;font-size:13px;border:none;border-radius:0;}
+  .CodeMirror{height:230px;background:#08161b;color:var(--frost);font-family:var(--mono);font-size:13px;line-height:1.55;}
+  .CodeMirror-gutters{background:#08161b;border-right:1px solid var(--line);}
+  .CodeMirror-linenumber{color:#3d5a64;}
+  .CodeMirror-cursor{border-left:2px solid var(--gold);}
+  .CodeMirror-selected,.CodeMirror-focused .CodeMirror-selected{background:rgba(231,197,104,.18);}
+  .CodeMirror-matchingbracket{color:var(--gold)!important;text-decoration:underline;}
+  .cm-keyword{color:#7FB3D5;} .cm-string{color:#A8D8B9;} .cm-number{color:#F2A65A;} .cm-comment{color:#4d6c77;}
+  .cm-builtin,.cm-type{color:#B39DDB;} .cm-operator{color:var(--mist);} .cm-variable-2{color:var(--gold);}
+  .CodeMirror-hints{background:var(--deep);border:1px solid var(--slate);font-family:var(--mono);font-size:12px;z-index:50;}
+  .CodeMirror-hint{color:var(--frost);} li.CodeMirror-hint-active{background:var(--blue-coal);color:var(--gold);}
+  .edfoot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--slate);margin:6px 2px 0;}
+  .presets{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px;}
+  .preset{font-family:var(--mono);font-size:11.5px;background:transparent;color:var(--mist);border:1px solid var(--slate);border-radius:14px;padding:4px 10px;cursor:pointer;}
+  .preset:hover{border-color:var(--gold);color:var(--gold);}
+  .res{margin-top:18px;}
+  .res-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;margin-bottom:4px;}
+  .res-h .idx{font-family:var(--disp);font-weight:700;font-size:16px;}
+  .res-h .meta{font-family:var(--mono);font-size:12px;color:var(--mist);}
+  .res-h .btnrow{margin-left:auto;}
+  .res-sql{font-family:var(--mono);font-size:11.5px;color:var(--slate);white-space:pre-wrap;word-break:break-word;max-height:3.2em;overflow:hidden;margin-bottom:4px;}
+  .res-note{font-size:12px;color:var(--gold);margin-bottom:4px;}
+  .res.bad .idx{color:var(--coral);}
+  table.t td.num{text-align:right;}
+  td.clickable{cursor:pointer;}
+  td.clickable:hover{background:rgba(231,197,104,.08);}
+  td .arr{display:inline-block;background:var(--deep);border-radius:4px;padding:0 6px;margin:1px 3px 1px 0;}
+  td .tag{color:var(--slate);font-size:10.5px;margin-right:4px;}
+  table.t tr:hover td{background:rgba(255,255,255,.02);}
+  .vrec{border:1px solid var(--line);border-radius:10px;margin:8px 0;overflow:hidden;}
+  .vrec-h{background:var(--blue-coal);color:var(--gold);font-family:var(--mono);font-size:11.5px;padding:4px 10px;}
+  .vrec table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;}
+  .vrec td .clip{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:820px;}
+  .vrec td{padding:4px 10px;border-top:1px solid var(--line);vertical-align:top;color:var(--frost);word-break:break-word;}
+  .vrec td:first-child{color:var(--mist);width:200px;white-space:nowrap;}
+  pre.psql{background:#08161b;border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-family:var(--mono);font-size:12px;line-height:1.45;color:var(--frost);overflow:auto;max-height:70vh;white-space:pre;margin:14px 0 0;}
+  .drawer{position:fixed;right:0;top:0;bottom:0;width:min(560px,92vw);background:var(--deep);border-left:1px solid var(--slate);z-index:40;display:flex;flex-direction:column;box-shadow:-12px 0 30px rgba(0,0,0,.35);}
+  .drawer[hidden]{display:none;}
+  .drawer-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);}
+  .drawer-h strong{font-family:var(--mono);font-size:13px;flex:1;word-break:break-all;}
+  .drawer-b{padding:12px 16px;overflow:auto;flex:1;}
+  .drawer-b pre.code{white-space:pre-wrap;word-break:break-word;}
+  /* diff */
+  .diffgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;}
+  .dcol h3{font-family:var(--disp);font-size:16px;margin:0 0 6px;}
+  .dline{font-family:var(--mono);font-size:12px;padding:3px 0;border-bottom:1px solid var(--line);word-break:break-word;}
+  .dline.add{color:#7fd8b5;} .dline.rem{color:#f6b8a4;} .dline.chg{color:var(--gold);}
+  .dline .sub{display:block;white-space:pre-line;color:var(--slate);font-size:11px;}
+
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr;}
+    aside{position:static;height:auto;}
+    main{padding:20px 16px 48px;}
+    .fn-row{grid-template-columns:6px 1fr;}
+    .fn-args,.fn-ret{grid-column:2;}
+  }
+  @media (prefers-reduced-motion:reduce){ .tick:hover{transform:none;} }
+
+  /* ---------- showcase: plain-English guided tour ---------- */
+  #v-showcase.on{max-width:1240px;}
+  .sc-top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px;}
+  .sc-prog{display:flex;gap:6px;flex:1;min-width:280px;}
+  .sc-dot{flex:1;min-width:0;height:36px;border-radius:8px;background:var(--deep);border:1px solid var(--line);color:var(--mist);font-family:var(--disp);font-size:13.5px;cursor:pointer;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sc-dot:hover{border-color:var(--gold);}
+  .sc-dot.on{background:var(--blue-coal);color:var(--gold);border-color:var(--gold);}
+  .sc-dot.done{color:#7fd8b5;}
+  .sc-kick{font-family:var(--mono);font-size:12.5px;color:var(--gold);letter-spacing:.08em;text-transform:uppercase;margin:0 0 4px;}
+  .sc-title{font-family:var(--disp);font-weight:700;font-size:46px;line-height:1.05;margin:0 0 12px;letter-spacing:-.01em;}
+  .sc-plain{font-size:20px;line-height:1.45;color:var(--frost);max-width:64ch;margin:0 0 8px;}
+  .sc-ex{font-size:15.5px;color:var(--mist);max-width:72ch;margin:0 0 22px;}
+  .sc-ex b{color:var(--gold);font-weight:500;}
+  .sc-live{background:var(--deep);border:1px solid var(--line);border-radius:14px;padding:22px;min-height:160px;}
+  .sc-live h3{font-family:var(--disp);font-size:18px;margin:20px 0 8px;} .sc-live h3:first-child{margin-top:0;}
+  .sc-why{margin:20px 0 0;font-size:17px;line-height:1.5;color:var(--frost);border-left:3px solid var(--gold);padding:2px 0 2px 16px;max-width:78ch;}
+  .sc-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;}
+  .sc-nav{display:flex;align-items:center;justify-content:space-between;margin-top:28px;}
+  .sc-count{font-family:var(--mono);font-size:12.5px;color:var(--mist);}
+  .sc-notes{margin-top:16px;background:var(--abyss);border:1px dashed var(--slate);border-radius:10px;padding:12px 16px;color:var(--mist);font-size:14.5px;line-height:1.55;}
+  .sc-notes b{color:var(--gold);font-weight:500;}
+  .sc-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px;}
+  .sc-tile{background:var(--abyss);border-radius:12px;padding:14px 16px;}
+  .sc-tile .n{font-family:var(--disp);font-weight:700;font-size:42px;line-height:1;color:var(--white);}
+  .sc-tile .t{font-family:var(--disp);font-weight:700;font-size:22px;line-height:1.1;color:var(--white);}
+  .sc-tile .l{font-size:13px;color:var(--mist);margin-top:5px;}
+  .sc-tile.good .n,.sc-tile.good .t{color:#7fd8b5;} .sc-tile.bad .n,.sc-tile.bad .t{color:var(--coral);} .sc-tile.warn .n,.sc-tile.warn .t{color:var(--gold);}
+  .sc-areas{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;}
+  .sc-area{display:grid;grid-template-columns:6px 1fr auto;gap:12px;align-items:center;text-align:left;background:var(--abyss);border:1px solid var(--line);border-radius:10px;padding:10px 14px 10px 10px;cursor:pointer;color:var(--white);}
+  .sc-area:hover{border-color:var(--gold);}
+  .sc-area .bar{align-self:stretch;border-radius:3px;}
+  .sc-area .t{font-family:var(--disp);font-size:17px;line-height:1.15;} .sc-area .d{font-size:12.5px;color:var(--mist);margin-top:2px;}
+  .sc-area .c{font-family:var(--mono);font-size:14px;color:var(--gold);}
+  .sc-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
+  .sc-card{background:var(--abyss);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;}
+  .sc-card h4{margin:0;font-family:var(--mono);font-size:14px;font-weight:500;word-break:break-all;}
+  .sc-card p{margin:8px 0 0;font-size:13.5px;line-height:1.5;color:var(--mist);}
+  .sc-card .row{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:5px 0;border-top:1px solid var(--line);color:var(--mist);}
+  .sc-card .row:first-of-type{margin-top:8px;} .sc-card .row b{font-weight:500;color:var(--white);text-align:right;word-break:break-word;}
+  .sc-card .row b.good{color:#7fd8b5;} .sc-card .row b.bad{color:var(--coral);}
+  .sc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .sc-pill{font-size:12px;border-radius:12px;padding:2px 10px;background:var(--deep);color:var(--frost);border:1px solid var(--line);}
+  .sc-pill.good{color:#7fd8b5;border-color:rgba(5,130,95,.7);} .sc-pill.warn{color:var(--gold);border-color:rgba(231,197,104,.5);} .sc-pill.bad{color:var(--coral);border-color:rgba(233,111,76,.6);}
+  .sc-empty{border:1.5px dashed var(--slate);border-radius:12px;padding:20px 22px;color:var(--mist);font-size:15px;line-height:1.55;}
+  .sc-empty strong{display:block;color:var(--white);font-family:var(--disp);font-size:19px;margin-bottom:4px;}
+  .sc-callout{display:flex;gap:14px;align-items:flex-start;background:var(--abyss);border-radius:12px;padding:14px 16px;margin-bottom:18px;font-size:15px;color:var(--frost);line-height:1.5;}
+  .sc-callout .ic{font-family:var(--disp);font-weight:700;font-size:22px;color:var(--gold);line-height:1;}
+  .sc-ask{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .sc-ask input[type=search],.sc-ask input[type=text]{flex:1;min-width:240px;font-family:var(--body);font-size:18px;padding:11px 14px;}
+  .sc-ask .btn{font-size:16px;padding:11px 22px;}
+  .sc-ask textarea{flex:1;min-width:260px;font-family:var(--body);font-size:16px;padding:10px 14px;min-height:64px;}
+  .sc-hit{display:grid;grid-template-columns:34px 1fr;gap:12px;padding:12px 0;border-top:1px solid var(--line);}
+  .sc-hit:first-child{border-top:none;}
+  .sc-hit .rk{font-family:var(--disp);font-weight:700;font-size:26px;color:var(--gold);line-height:1;}
+  .sc-hit .tt{font-family:var(--mono);font-size:14.5px;word-break:break-all;}
+  .sc-hit .tx{font-size:14px;color:var(--mist);margin-top:4px;line-height:1.5;word-break:break-word;}
+  .sc-meter{height:6px;border-radius:3px;background:var(--abyss);margin-top:8px;max-width:260px;overflow:hidden;} .sc-meter i{display:block;height:100%;background:var(--gold);}
+  .sc-bubble{background:var(--abyss);border-left:3px solid var(--gold);border-radius:4px 12px 12px 4px;padding:14px 16px;margin-top:14px;font-size:16px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
+  .sc-join{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 10px;padding:9px 0;border-top:1px solid var(--line);font-size:15px;}
+  .sc-join:first-child{border-top:none;} .sc-join code{font-family:var(--mono);font-size:12.5px;color:var(--mist);}
+  .sc-join .arrow{color:var(--gold);}
+  .sc-sub{font-size:13px;color:var(--mist);margin:2px 0 10px;}
+  .sc-live pre.code{max-height:360px;overflow:auto;}
+  .sc-cta{margin:0 0 22px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+  .sc-cta span{color:var(--mist);font-size:14px;}
+  @media (prefers-reduced-motion:no-preference){ .sc-area,.sc-dot{transition:border-color .15s;} }
+
+  /* ---------- showcase: ready-to-run queries ---------- */
+  .sc-sqlbox{margin-top:22px;background:var(--deep);border:1px solid var(--line);border-radius:14px;padding:20px 22px;}
+  .sc-sqlbox h3{font-family:var(--disp);font-size:20px;margin:0 0 4px;}
+  .sc-how{margin:6px 0 16px;padding-left:20px;color:var(--frost);font-size:14.5px;line-height:1.6;max-width:90ch;}
+  .sc-how b{color:var(--gold);font-weight:500;}
+  .sc-q{background:var(--abyss);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 12px;}
+  .sc-q-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px;font-size:15px;}
+  .sc-q pre.code{margin:6px 0 10px;white-space:pre-wrap;word-break:break-word;}
+  .sc-q .sc-actions{margin-top:0;}
+  .sc-expect{margin:10px 0 0;font-size:14px;color:var(--frost);} .sc-expect b{color:var(--gold);font-weight:500;}
+  .sc-q-out{margin-top:10px;}
+  .sc-q-out .tw{max-height:300px;}
+  .edhelp{border:1px solid var(--line);background:var(--deep);border-radius:12px;padding:12px 18px;margin:0 0 16px;}
+  .edhelp summary{cursor:pointer;font-family:var(--disp);font-size:17px;}
+  .edhelp ol{margin:10px 0 4px;padding-left:22px;line-height:1.7;color:var(--frost);font-size:14.5px;max-width:95ch;}
+  .edhelp b{color:var(--gold);font-weight:500;} .edhelp code{font-family:var(--mono);font-size:12.5px;}
+  .ednote{border:1px solid var(--gold);background:rgba(231,197,104,.1);color:var(--frost);border-radius:8px;padding:9px 14px;margin:0 0 12px;font-size:14px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">AIDB Introspector<small>Read-only map of the aidb extension on your server</small></div>
+    <span class="ver" id="verBadge">not connected</span>
+
+    <div class="conn">
+      <div class="full"><label class="f" for="pgHost">Host</label><input type="text" id="pgHost" placeholder="blank = local socket / $PGHOST"></div>
+      <div><label class="f" for="pgDatabase">Database</label><input type="text" id="pgDatabase" placeholder="$PGDATABASE"></div>
+      <div><label class="f" for="pgPort">Port</label><input type="text" id="pgPort" placeholder="5432"></div>
+      <div class="full"><label class="f" for="pgUser">User</label><input type="text" id="pgUser" placeholder="$PGUSER"></div>
+      <div class="full"><label class="f" for="pgPassword">Password</label><input type="password" id="pgPassword" placeholder="blank for trust / peer / .pgpass"></div>
+      <div class="full btnrow" style="margin-top:6px;">
+        <button class="btn" id="btnConnect">Connect &amp; scan</button>
+        <button class="btn ghost small" id="btnSave" title="Save to .aidb_introspect_config.json next to the server">Save</button>
+      </div>
+      <label class="chkline full"><input type="checkbox" id="savePw"> Include password when saving</label>
+    </div>
+    <div class="status" id="status">Blank fields fall back to your PG* environment variables, exactly like running plain <code>psql</code>.</div>
+
+    <nav id="nav">
+      <button data-view="overview" class="on">Overview <span class="n"></span></button>
+      <button data-view="showcase" disabled>Showcase <span class="n">tour</span></button>
+      <button data-view="functions" disabled>Functions <span class="n" id="nFn"></span></button>
+      <button data-view="relations" disabled>Tables &amp; views <span class="n" id="nRel"></span></button>
+      <button data-view="types" disabled>Types <span class="n" id="nTy"></span></button>
+      <button data-view="settings" disabled>Settings <span class="n" id="nSet"></span></button>
+      <button data-view="inventory" disabled>Live objects <span class="n" id="nInv"></span></button>
+      <button data-view="console" disabled>SQL console <span class="n"></span></button>
+      <button data-view="compare" disabled>Compare versions <span class="n"></span></button>
+    </nav>
+  </aside>
+
+  <main>
+    <div id="notices"></div>
+
+    <!-- OVERVIEW -->
+    <section class="view on" id="v-overview">
+      <div id="ovEmpty" class="empty"><strong>Connect to see what aidb exposes</strong>
+        Everything is read from <code>pg_catalog</code> and aidb's own <code>list_*</code> functions in a read-only transaction. Nothing is created, changed or deleted.</div>
+      <div id="ovBody" hidden>
+        <div class="sc-cta"><button class="btn" id="btnStartTour">Start the guided showcase</button><span>Seven plain-English steps for a non-technical audience, running on this server.</span></div>
+        <h1 id="ovTitle"></h1>
+        <p class="lede" id="ovLede"></p>
+        <div class="facts" id="facts"></div>
+        <h2 style="margin-top:0;">Function surface</h2>
+        <p class="lede">One mark per function in the <code>aidb</code> schema, coloured by area. Rounded marks are aggregates. Select a mark to open that function.</p>
+        <div class="map" id="map"></div>
+        <div class="maptip" id="maptip">&nbsp;</div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </section>
+
+    <!-- SHOWCASE -->
+    <section class="view" id="v-showcase">
+      <div class="sc-top"><div class="sc-prog" id="scProg"></div>
+        <button class="btn ghost small" id="scReadyBtn">Demo readiness</button>
+        <label class="chkline"><input type="checkbox" id="scNotesToggle"> Presenter notes</label></div>
+      <div id="scReady" class="sc-live" hidden style="margin-bottom:20px;"></div>
+      <div id="scBody"></div>
+      <div class="sc-nav"><button class="btn ghost" id="scPrev">Back</button><span class="sc-count" id="scCount"></span><button class="btn" id="scNext">Next</button></div>
+    </section>
+
+    <!-- FUNCTIONS -->
+    <section class="view" id="v-functions">
+      <h1>Functions</h1>
+      <p class="lede">Signatures come from <code>pg_get_function_arguments()</code>, so defaults and named parameters match what the server actually accepts. Open a function for its parameters, a ready-to-edit call, and its source.</p>
+      <div class="toolbar">
+        <input type="search" id="fnSearch" placeholder="Search name, argument or return type  ( / )">
+        <select id="fnCat"><option value="">All areas</option></select>
+        <select id="fnKind">
+          <option value="">Any kind</option><option value="f">Functions</option><option value="a">Aggregates</option><option value="p">Procedures</option>
+        </select>
+        <label class="chkline"><input type="checkbox" id="fnHideInternal" checked> Hide internal helpers</label>
+        <label class="chkline" id="fnOnlyNewWrap" hidden><input type="checkbox" id="fnOnlyNew"> <span id="fnOnlyNewLbl">Only new or changed</span></label>
+        <span class="count" id="fnCount"></span>
+      </div>
+      <div id="fnList"></div>
+    </section>
+
+    <!-- RELATIONS -->
+    <section class="view" id="v-relations">
+      <h1>Tables &amp; views</h1>
+      <p class="lede">Catalog tables and views in the <code>aidb</code> schema. Row counts are planner estimates until you browse. Values stored under keys that look like credentials are replaced before they reach this page.</p>
+      <div class="toolbar"><input type="search" id="relSearch" placeholder="Filter by table or column name"><span class="count" id="relCount"></span></div>
+      <div id="relList"></div>
+    </section>
+
+    <!-- TYPES -->
+    <section class="view" id="v-types">
+      <h1>Types</h1>
+      <p class="lede">Enums tell you the valid values for parameters such as <code>auto_processing</code> or <code>distance_operator</code>.</p>
+      <div id="typeList"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="v-settings">
+      <h1>Settings</h1>
+      <p class="lede">Every <code>aidb.*</code> GUC visible to this session. Rows where the current value differs from the built-in default are marked.</p>
+      <div id="setList"></div>
+    </section>
+
+    <!-- INVENTORY -->
+    <section class="view" id="v-inventory">
+      <h1>Live objects</h1>
+      <p class="lede">What has actually been created on this server, via aidb's own listing functions. Each one runs on its own, so a missing function on your build shows up as a note rather than breaking the page.</p>
+      <div class="btnrow"><button class="btn ghost small" id="btnInvRefresh">Refresh live objects</button></div>
+      <div id="invList"></div>
+    </section>
+
+    <!-- CONSOLE -->
+    <section class="view" id="v-console">
+      <h1>SQL editor</h1>
+      <details class="edhelp" id="edHelp" open><summary>New to the SQL console? Read this first</summary>
+        <ol>
+          <li><b>Get a query into the box below.</b> Pick one of the buttons under the box (<i>list_models()</i>, <i>Providers</i>, …), or open one from a Showcase step with <i>Open in SQL console</i>, or type or paste your own.</li>
+          <li><b>Press Run</b>, or <code>Ctrl+Enter</code> (<code>⌘+Enter</code> on a Mac). If you have selected part of the text, only the selection runs; otherwise everything runs. Put each query on its own and end it with a semicolon.</li>
+          <li><b>Read the result under the editor.</b> Each query gets its own table. Click any cell to read a long value in a side panel. <i>Grid</i> shows tables; <i>psql text</i> shows exactly what a terminal would print.</li>
+          <li><b>It is read-only.</b> Nothing is changed unless you tick <i>Allow writes</i>. A few AIDB commands, such as asking an agent a question, record a conversation and need that tick.</li>
+          <li><b>Errors are normal and harmless.</b> Red text under the editor says what went wrong, and <i>The SQL behind this</i> panels in the Showcase show working examples.</li>
+        </ol>
+      </details>
+      <div class="ednote" id="edNote" hidden></div>
+      <p class="lede">Runs through your <code>psql</code>. Each statement gets its own result; psql describe commands such as <code>\df aidb.*</code> or <code>\d aidb.models</code> work on their own line. Read-only unless you allow writes. Model functions (<code>encode_text</code>, <code>generate_text</code>) still call the model.</p>
+      <div class="edbar">
+        <button class="btn" id="btnRun" title="Ctrl+Enter / ⌘+Enter — runs the selection if there is one">Run</button>
+        <div class="seg" role="group" aria-label="Output">
+          <button data-fmt="grid" class="on">Grid</button><button data-fmt="text">psql text</button>
+        </div>
+        <label class="chkline" title="SELECT aidb.list_models() is run as SELECT * FROM aidb.list_models() so each field gets its own column"><input type="checkbox" id="optExpand" checked> Split records into columns</label>
+        <label class="chkline"><input type="checkbox" id="optVertical"> Vertical rows (\x)</label>
+        <label class="chkline">Timeout <select id="optTimeout"><option value="30">30 s</option><option value="120">2 min</option><option value="600">10 min</option></select></label>
+        <label class="chkline"><input type="checkbox" id="optWrite"> Allow writes</label>
+        <select id="history" style="max-width:260px;"><option value="">History</option></select>
+      </div>
+      <div class="edwrap"><textarea id="consoleSql" spellcheck="false">select aidb.list_models();</textarea></div>
+      <div class="edfoot"><span id="edHint">Ctrl+Enter runs · Ctrl+Space completes aidb functions, tables and columns</span><span id="edMode"></span></div>
+      <div class="presets" id="presets"></div>
+      <div id="consoleOut"></div>
+    </section>
+
+    <aside class="drawer" id="drawer" hidden aria-label="Cell value">
+      <div class="drawer-h"><strong id="drawerTitle"></strong><button class="btn ghost small" id="drawerCopy">Copy</button><button class="btn ghost small" id="drawerClose">Close</button></div>
+      <div class="drawer-b" id="drawerBody"></div>
+    </aside>
+
+    <!-- COMPARE -->
+    <section class="view" id="v-compare">
+      <h1>Compare versions</h1>
+      <p class="lede">Save a snapshot of this server's aidb surface, then load a snapshot taken on another server or an earlier version (for example 7.6) to see which functions, parameters, tables, enum values and settings were added, removed or changed.</p>
+      <div class="btnrow">
+        <button class="btn" id="btnSnap">Download snapshot</button>
+        <label class="btn ghost" for="snapFile" style="display:inline-block;">Compare with a snapshot file…</label>
+        <input type="file" id="snapFile" accept=".json,application/json" hidden>
+      </div>
+      <div class="status" id="cmpStatus"></div>
+      <div id="cmpOut"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ======================= utilities ======================= */
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function hl(sql){
+  return String(sql ?? '').split('\n').map(line=>{
+    if (line.trim().startsWith('--')) return `<span class="cm">${esc(line)}</span>`;
+    return esc(line)
+      .replace(/\b(SELECT|FROM|WHERE|ARRAY|VARIADIC|CREATE|OR|REPLACE|FUNCTION|RETURNS|LANGUAGE|AS|TABLE|SETOF|DEFAULT|NULL|STRICT|IMMUTABLE|STABLE|VOLATILE|SECURITY|DEFINER|BEGIN|END|RETURN|LIMIT)\b/g,'<span class="kw">$1</span>')
+      .replace(/'([^']*)'/g,"<span class=\"str\">'$1'</span>");
+  }).join('\n');
+}
+function bytes(n){ n=Number(n)||0; const u=['B','kB','MB','GB','TB']; let i=0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return (i?n.toFixed(1):n)+' '+u[i]; }
+function cell(v){
+  if (v === null || v === undefined || v === '') return {cls:'null', html:'∅'};
+  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return {cls:'', html:`<span class="clip" title="${esc(s.length>2000?s.slice(0,2000)+'…':s)}">${esc(s)}</span>`};
+}
+function table(rows, columns){
+  if (!rows || !rows.length) return '<p class="muted">No rows.</p>';
+  const cols = columns && columns.length ? columns : Object.keys(rows[0]);
+  const head = cols.map(c=>`<th>${esc(c)}</th>`).join('');
+  const body = rows.map(r=>'<tr>'+cols.map(c=>{const x=cell(r[c]);return `<td class="${x.cls}">${x.html}</td>`;}).join('')+'</tr>').join('');
+  return `<div class="tw"><table class="t"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function connInfo(){ return {host:$('pgHost').value.trim(), port:$('pgPort').value.trim(), dbname:$('pgDatabase').value.trim(), user:$('pgUser').value.trim(), password:$('pgPassword').value}; }
+async function api(path, extra){
+  const res = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Requested-By':'aidb-introspect'},body:JSON.stringify(Object.assign(connInfo(),extra||{}))});
+  return res.json();
+}
+function setStatus(msg, isErr){ const s=$('status'); s.textContent=msg; s.classList.toggle('err',!!isErr); }
+function copyText(t, btn){ navigator.clipboard.writeText(t).then(()=>{ const o=btn.textContent; btn.textContent='Copied'; setTimeout(()=>btn.textContent=o,1200); }); }
+
+/* ======================= categories ======================= */
+const CATS = [
+  {id:'internal', name:'Internal helpers', color:'var(--c-internal)', re:/^_|_(in|out|recv|send)$|^summ_txt_agg|^protect_owner_role$|^registry_fdw_handler$|^check_aidb|^assert_|^auto_pipeline_live_dispatch$|^skb_process_ddl_event$|^resolve_mcp_call_for_dispatch$|^distance_operator_to_sql$|^relation_with_schema$|^resolve_relation_schema$|^get_owner_role$/},
+  {id:'cred', name:'Credentials & egress', color:'var(--c-cred)', re:/credential|endpoint|egress/},
+  {id:'config', name:'Config builders', color:'var(--c-config)', re:/_config(_from_kb)?$/},
+  {id:'bdr', name:'Replication (PGD/BDR)', color:'var(--c-bdr)', re:/^bdr_/},
+  {id:'agents', name:'Agents & conversations', color:'var(--c-agents)', re:/agent|conversation|^get_message$|purpose/},
+  {id:'tools', name:'Tools & MCP', color:'var(--c-tools)', re:/tool|mcp|^params?$|^output_(field|type)$|^run_sql_query$|^sleep$/},
+  {id:'semantic', name:'Semantic layer', color:'var(--c-semantic)', re:/semantic|relationship|join|comment|_definitions$|^get_metadata$|query_history|alias/},
+  {id:'catalog', name:'Catalog & DB insight', color:'var(--c-catalog)', re:/^catalog_|^explain_query$|^analyze_db_health$/},
+  {id:'pipe', name:'Pipelines & preparers', color:'var(--c-pipe)', re:/pipeline|preparer|^bulk_data_preparation$|error_log|error_summ/},
+  {id:'kb', name:'Knowledge bases & retrieval', color:'var(--c-kb)', re:/knowledge_base|retriever|^retrieve_|^kb_|^bulk_embedding$|^memory_search$|auto_embedding/},
+  {id:'models', name:'Models & inference', color:'var(--c-models)', re:/model|provider|^encode_|^decode_|^generate_text|^rerank|hcp/},
+  {id:'prep', name:'Parse, chunk, OCR, summarize', color:'var(--c-prep)', re:/^parse_|chunk|ocr|summar|^pdf_to_image$/},
+  {id:'vol', name:'Volumes & storage', color:'var(--c-vol)', re:/volume|^_lo_/},
+  {id:'gov', name:'Governance & ops', color:'var(--c-gov)', re:/audit|otel|prune|^validate/},
+  {id:'other', name:'Other', color:'var(--c-other)', re:/.*/},
+];
+const CAT_BY_ID = Object.fromEntries(CATS.map(c=>[c.id,c]));
+function categorize(fn){ return CATS.find(c=>c.re.test(fn.name)).id; }
+
+/* ======================= signature parsing ======================= */
+function splitTop(s){
+  const out=[]; let depth=0, q=false, cur='';
+  for (let i=0;i<s.length;i++){
+    const ch=s[i];
+    if (ch==="'" ) q=!q;
+    if (!q){ if (ch==='('||ch==='[') depth++; if (ch===')'||ch===']') depth--; if (ch===','&&depth===0){ out.push(cur.trim()); cur=''; continue; } }
+    cur+=ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+function parseArgs(argStr){
+  return splitTop(argStr||'').map(a=>{
+    let mode='IN', m=a.match(/^(IN|OUT|INOUT|VARIADIC)\s+/);
+    if (m){ mode=m[1]; a=a.slice(m[0].length); }
+    let def=null; const di=a.search(/\sDEFAULT\s/);
+    if (di>=0){ def=a.slice(di).replace(/^\s*DEFAULT\s+/,''); a=a.slice(0,di); }
+    let name='', type=a.trim();
+    if (type.startsWith('"')){ const e=type.indexOf('"',1); name=type.slice(1,e); type=type.slice(e+1).trim(); }
+    else { const sp=type.indexOf(' '); if (sp>0){ name=type.slice(0,sp); type=type.slice(sp+1).trim(); } }
+    return {mode,name,type,def};
+  });
+}
+function placeholder(type){
+  const t=type.toLowerCase();
+  if (t.endsWith('[]')) return `ARRAY[]::${type}`;
+  if (t==='text'||t.startsWith('character')||t==='name') return `'…'`;
+  if (/int|numeric|double|real/.test(t)) return '0';
+  if (t==='boolean') return 'false';
+  if (t==='jsonb'||t==='json') return `'{}'::${t}`;
+  if (t==='bytea') return `'\\x'::bytea`;
+  if (t==='interval') return `'30 seconds'::interval`;
+  return `NULL::${type}`;
+}
+function callTemplate(fn){
+  const args=parseArgs(fn.args).filter(a=>a.mode!=='OUT');
+  const qn = s => /^[a-z_][a-z0-9_]*$/.test(s) && !['offset','analyze','limit','order','user','table'].includes(s) ? s : `"${s}"`;
+  const lines=[];
+  args.forEach(a=>{
+    const val = a.def!==null ? a.def : placeholder(a.type);
+    const prefix = a.mode==='VARIADIC' ? 'VARIADIC ' : '';
+    const lhs = a.name && a.mode!=='VARIADIC' ? `${qn(a.name)} => ` : prefix;
+    lines.push({txt:`${lhs}${val}`, opt:a.def!==null, type:a.type});
+  });
+  const setReturning = fn.returns_set || /^TABLE\(/.test(fn.result||'') || /OUT /.test(fn.args||'');
+  const head = setReturning ? `SELECT * FROM aidb.${fn.name}(` : `SELECT aidb.${fn.name}(`;
+  if (!lines.length) return head+');';
+  const req=lines.filter(l=>!l.opt), opt=lines.filter(l=>l.opt);
+  const body=[];
+  req.forEach(l=>body.push(`  ${l.txt}`));
+  if (opt.length){ body.push('  -- optional (shown with their defaults):'); opt.forEach(l=>body.push(`  -- ${l.txt}`)); }
+  // put commas only between active (non-comment) lines
+  const active=body.filter(l=>!l.trim().startsWith('--'));
+  let n=0; const out=body.map(l=>{ if (l.trim().startsWith('--')) return l; n++; return n<active.length ? l+',' : l; });
+  return `${head}\n${out.join('\n')}\n);`;
+}
+
+/* ======================= state ======================= */
+let CAT = null;      // catalog JSON
+let BASE = null;     // loaded comparison snapshot: {version, status: Map(key -> 'new'|'changed')}
+let INV = null;      // inventory items
+const VOL = {i:'immutable', s:'stable', v:'volatile'};
+const KIND = {f:'function', a:'aggregate', p:'procedure', w:'window'};
+const RELKIND = {r:'table', v:'view', m:'materialized view', f:'foreign table', p:'partitioned table'};
+const TYPKIND = {e:'enum', d:'domain', c:'composite', b:'base'};
+
+/* ======================= navigation ======================= */
+function show(view){
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.view===view));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on', v.id==='v-'+view));
+  window.scrollTo({top:0});
+  if (view==='console' && editor) setTimeout(()=>editor.refresh(),0);
+}
+document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>show(b.dataset.view)));
+
+/* ======================= connect ======================= */
+async function connect(){
+  const btn=$('btnConnect'); btn.disabled=true; setStatus('Reading the aidb catalog…');
+  try{
+    const r = await api('/api/catalog');
+    renderNotices(r.notices);
+    if (!r.ok){ setStatus(r.error, true); return; }
+    CAT = r.catalog;
+    CAT.functions.forEach(f=>f.cat=categorize(f));
+    $('verBadge').textContent = 'aidb ' + CAT.extension.version;
+    document.querySelectorAll('#nav button').forEach(b=>b.disabled=false);
+    renderOverview(); renderFunctions(); renderRelations(); renderTypes(); renderSettings(); renderPresets();
+    const c=CAT.server;
+    setStatus(`Connected to ${c.database} as ${c.user}.`);
+    INV_PROMISE = loadInventory(); scStep = 0; renderShowcase();
+  } catch(e){
+    setStatus("Couldn't reach the local server. Is aidb_introspect_server.py running? ("+e.message+")", true);
+  } finally { btn.disabled=false; }
+}
+$('btnConnect').addEventListener('click', connect);
+document.querySelectorAll('.conn input[type=text], .conn input[type=password]').forEach(i=>i.addEventListener('keydown',e=>{ if(e.key==='Enter') connect(); }));
+
+function renderNotices(list){
+  $('notices').innerHTML = (list||[]).map(n=>`<div class="notice">${esc(n)}</div>`).join('');
+}
+
+$('btnSave').addEventListener('click', async ()=>{
+  try{
+    const res = await fetch('/api/local-config',{method:'POST',headers:{'Content-Type':'application/json','X-Requested-By':'aidb-introspect'},body:JSON.stringify(Object.assign(connInfo(),{savePassword:$('savePw').checked}))});
+    const d = await res.json();
+    setStatus(d.ok ? 'Connection saved to .aidb_introspect_config.json (readable only by you).' : d.error, !d.ok);
+  } catch(e){ setStatus("Couldn't reach the local server: "+e.message, true); }
+});
+(async function loadSaved(){
+  try{
+    const d = await (await fetch('/api/local-config')).json();
+    if (!d.ok || !d.config) return;
+    const c=d.config;
+    if (c.host) $('pgHost').value=c.host; if (c.port) $('pgPort').value=c.port;
+    if (c.dbname) $('pgDatabase').value=c.dbname; if (c.user) $('pgUser').value=c.user;
+    if (c.password){ $('pgPassword').value=c.password; $('savePw').checked=true; }
+    if (d.from) setStatus(`Loaded saved connection from ${d.from}.`);
+  } catch(e){}
+})();
+
+/* ======================= overview ======================= */
+function renderOverview(){
+  $('ovEmpty').hidden=true; $('ovBody').hidden=false;
+  const ext=CAT.extension, av=CAT.available, sv=CAT.server, fns=CAT.functions;
+  const preload = (sv.shared_preload_libraries||'').split(',').map(s=>s.trim());
+  const preloaded = preload.includes('aidb');
+  const upgrade = av.default_version && av.default_version!==ext.version;
+  const aggs = fns.filter(f=>f.kind==='a').length;
+  const internal = fns.filter(f=>f.cat==='internal').length;
+  const noExec = fns.filter(f=>!f.can_execute).length;
+  const nonDefault = CAT.settings.filter(s=>s.source!=='default').length;
+  $('ovTitle').textContent = `aidb ${ext.version} on ${sv.database}`;
+  $('ovLede').textContent = `${fns.length} functions (${aggs} aggregate${aggs===1?'':'s'}, ${internal} internal helpers), ${CAT.relations.length} tables and views, ${CAT.types.length} types and ${CAT.settings.length} settings in the ${ext.schema} schema.`;
+  const facts = [
+    ['Installed version', ext.version],
+    ['Available on disk', (av.versions||[]).join(', ') || '—', upgrade?'warn':''],
+    ['Default version', av.default_version || '—', upgrade?'warn':'good'],
+    ['Preloaded', preloaded?'yes, in shared_preload_libraries':'no, background features may be unavailable', preloaded?'good':'warn'],
+    ['Postgres', sv.server_version],
+    ['Connected as', sv.user + (sv.is_superuser?' (superuser)':'')],
+    ['Functions you can execute', `${fns.length-noExec} of ${fns.length}`, noExec?'warn':''],
+    ['Settings changed from default', String(nonDefault), nonDefault?'warn':''],
+    ['aidb background workers', CAT.workers.length ? CAT.workers.map(w=>w.backend_type||w.application_name).join(', ') : 'none visible'],
+    ['Event triggers', CAT.event_triggers.length ? CAT.event_triggers.map(t=>t.name).join(', ') : 'none'],
+    ['Requires', (ext.requires||[]).join(', ') || '—'],
+    ['Other extensions', (sv.installed_extensions||[]).filter(e=>e.name!=='aidb').map(e=>`${e.name} ${e.version}`).join(', ') || '—'],
+  ];
+  $('facts').innerHTML = facts.map(([k,v,c])=>`<div class="fact"><div class="k">${esc(k)}</div><div class="v ${c||''}">${esc(v)}</div></div>`).join('');
+
+  // surface map: ordered by category, then name
+  const order = Object.fromEntries(CATS.map((c,i)=>[c.id,i]));
+  const sorted=[...fns].sort((a,b)=>order[a.cat]-order[b.cat] || a.name.localeCompare(b.name));
+  $('map').innerHTML = sorted.map(f=>`<button class="tick ${f.kind==='a'?'agg':''}" style="background:${CAT_BY_ID[f.cat].color}" data-oid="${f.oid}" aria-label="${esc(f.name)}"></button>`).join('');
+  const byOid = Object.fromEntries(fns.map(f=>[String(f.oid),f]));
+  $('map').querySelectorAll('.tick').forEach(t=>{
+    const f=byOid[t.dataset.oid];
+    const tip=()=>{ $('maptip').textContent = `${f.name}(${f.identity_args}) → ${f.result}   ·  ${CAT_BY_ID[f.cat].name}`; };
+    t.addEventListener('mouseenter',tip); t.addEventListener('focus',tip);
+    t.addEventListener('click',()=>openFunction(f.oid));
+  });
+  const counts={}; fns.forEach(f=>counts[f.cat]=(counts[f.cat]||0)+1);
+  $('legend').innerHTML = CATS.filter(c=>counts[c.id]).map(c=>`<button class="lg" data-cat="${c.id}"><span class="sw" style="background:${c.color}"></span><span class="lgname">${esc(c.name)}</span><span class="lgn">${counts[c.id]}</span></button>`).join('');
+  $('legend').querySelectorAll('.lg').forEach(b=>b.addEventListener('click',()=>{
+    $('fnCat').value=b.dataset.cat; $('fnHideInternal').checked = b.dataset.cat!=='internal' ? $('fnHideInternal').checked : false;
+    renderFnList(); show('functions');
+  }));
+  $('nFn').textContent=fns.length;
+}
+
+/* ======================= functions ======================= */
+function renderFunctions(){
+  const sel=$('fnCat'); sel.innerHTML='<option value="">All areas</option>'+CATS.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  renderFnList();
+}
+function renderFnList(){
+  const q=$('fnSearch').value.trim().toLowerCase(), cat=$('fnCat').value, kind=$('fnKind').value, hideInt=$('fnHideInternal').checked;
+  const list=CAT.functions.filter(f=>{
+    if (cat && f.cat!==cat) return false;
+    if (!cat && hideInt && f.cat==='internal') return false;
+    if (kind && f.kind!==kind) return false;
+    if ($('fnOnlyNew').checked && BASE && !BASE.status.has(fnKey(f))) return false;
+    if (q && !(f.name+' '+f.args+' '+f.result+' '+(f.comment||'')).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  $('fnCount').textContent = `${list.length} of ${CAT.functions.length}`;
+  const groups={}; list.forEach(f=>(groups[f.cat]=groups[f.cat]||[]).push(f));
+  $('fnList').innerHTML = list.length ? CATS.filter(c=>groups[c.id]).map(c=>`
+    <div class="grp"><div class="grp-h"><span class="sw" style="background:${c.color}"></span>${esc(c.name)} <span class="n">${groups[c.id].length}</span></div>
+      ${groups[c.id].map(fnRow).join('')}
+    </div>`).join('') : '<div class="empty"><strong>No functions match</strong>Clear the search or pick another area.</div>';
+  $('fnList').querySelectorAll('.fn-row').forEach(r=>r.addEventListener('click',()=>toggleFn(r.parentElement)));
+}
+function fnKey(f){ return `${f.name}(${f.identity_args})`; }
+function fnRow(f){
+  const argSummary = parseArgs(f.args).filter(a=>a.mode!=='OUT').map(a=>(a.def!==null?'['+(a.name||a.type)+']':(a.name||a.type))).join(', ');
+  return `<div class="fn" id="fn-${f.oid}" data-oid="${f.oid}">
+    <button class="fn-row" aria-expanded="false"><span class="bar" style="background:${CAT_BY_ID[f.cat].color}"></span>
+      <span class="fn-name">${esc(f.name)}${f.kind==='a'?' <span class="b">agg</span>':''}${BASE&&BASE.status.get(fnKey(f))==='new'?' <span class="b green">new</span>':''}${BASE&&BASE.status.get(fnKey(f))==='changed'?' <span class="b gold">changed</span>':''}</span>
+      <span class="fn-args">(${esc(argSummary)})</span>
+      <span class="fn-ret" title="${esc(f.result)}">${esc(f.result)}</span></button>
+    <div class="fn-detail"></div></div>`;
+}
+function toggleFn(el){
+  const open=!el.classList.contains('open');
+  el.classList.toggle('open',open); el.querySelector('.fn-row').setAttribute('aria-expanded',open);
+  if (open && !el.dataset.filled){ fillDetail(el); el.dataset.filled='1'; }
+}
+function fillDetail(el){
+  const f=CAT.functions.find(x=>String(x.oid)===el.dataset.oid);
+  const args=parseArgs(f.args);
+  const badges=[
+    `<span class="b">${KIND[f.kind]||f.kind}</span>`, `<span class="b">${esc(f.lang)}</span>`, `<span class="b">${VOL[f.volatility]}</span>`,
+    f.returns_set?'<span class="b">set-returning</span>':'', f.strict?'<span class="b">strict</span>':'',
+    f.security_definer?'<span class="b gold">security definer</span>':'',
+    f.can_execute?'<span class="b green">you can execute</span>':'<span class="b coral">no EXECUTE privilege</span>',
+    f.ext_member?'':'<span class="b coral">not owned by the extension</span>',
+    `<span class="b">owner ${esc(f.owner)}</span>`,
+  ].join('');
+  const rows=args.map(a=>({parameter:a.name||'(unnamed)', type:a.type, mode:a.mode.toLowerCase(), default:a.def===null?'required':a.def}));
+  const tpl=callTemplate(f);
+  el.querySelector('.fn-detail').innerHTML = `
+    <div class="badges">${badges}</div>
+    ${f.comment?`<p class="desc">${esc(f.comment)}</p>`:''}
+    ${rows.length?table(rows,['parameter','type','mode','default']):'<p class="muted">Takes no arguments.</p>'}
+    <div class="muted" style="font-size:12px;">Returns</div>
+    <pre class="code">${hl(f.result)}</pre>
+    <div class="muted" style="font-size:12px;">Call template</div>
+    <pre class="code">${hl(tpl)}</pre>
+    <div class="btnrow">
+      <button class="btn ghost small" data-act="copy">Copy call</button>
+      <button class="btn ghost small" data-act="console">Open in console</button>
+      <button class="btn ghost small" data-act="def">Show source</button>
+    </div>
+    <div class="defout"></div>`;
+  const d=el.querySelector('.fn-detail');
+  d.querySelector('[data-act=copy]').addEventListener('click',e=>copyText(tpl,e.target));
+  d.querySelector('[data-act=console]').addEventListener('click',()=>openInEditor(tpl));
+  d.querySelector('[data-act=def]').addEventListener('click',async e=>{
+    e.target.disabled=true; const out=d.querySelector('.defout'); out.innerHTML='<p class="muted">Loading…</p>';
+    try{
+      const r=await api('/api/function',{oid:f.oid});
+      if (!r.ok){ out.innerHTML=`<p class="err">${esc(r.error)}</p>`; return; }
+      const x=r.data;
+      let html='';
+      if (x.definition) html+=`<pre class="code">${hl(x.definition)}</pre>`;
+      if (x.aggregate) html+=table([x.aggregate]);
+      html+=table([{cost:x.cost, rows:x.rows, parallel:{s:'safe',r:'restricted',u:'unsafe'}[x.parallel]||x.parallel, config:x.config, acl:x.acl, library:x.probin}]);
+      if (f.lang==='c') html='<p class="muted">Implemented in C (Rust) inside the aidb library — the body below is the entry point, not the logic.</p>'+html;
+      out.innerHTML=html;
+    } catch(err){ out.innerHTML=`<p class="err">${esc(err.message)}</p>`; }
+    finally{ e.target.disabled=false; }
+  });
+}
+function openFunction(oid){
+  const f=CAT.functions.find(x=>x.oid===oid);
+  $('fnSearch').value=''; $('fnKind').value=''; $('fnCat').value='';
+  if (f.cat==='internal') $('fnHideInternal').checked=false;
+  renderFnList(); show('functions');
+  const el=$('fn-'+oid); if (!el.classList.contains('open')) toggleFn(el);
+  el.scrollIntoView({block:'center'}); el.querySelector('.fn-row').focus();
+}
+['fnSearch','fnCat','fnKind','fnHideInternal','fnOnlyNew'].forEach(id=>$(id).addEventListener('input',()=>CAT&&renderFnList()));
+document.addEventListener('keydown',e=>{
+  if (e.key==='/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && CAT){ e.preventDefault(); show('functions'); $('fnSearch').focus(); }
+});
+
+/* ======================= relations ======================= */
+function renderRelations(){
+  $('nRel').textContent=CAT.relations.length;
+  const q=$('relSearch').value.trim().toLowerCase();
+  const list=CAT.relations.filter(r=>!q || r.name.toLowerCase().includes(q) || r.columns.some(c=>c.name.toLowerCase().includes(q)));
+  $('relCount').textContent=`${list.length} of ${CAT.relations.length}`;
+  $('relList').innerHTML = list.length ? list.map(r=>`
+    <div class="item" data-rel="${esc(r.name)}">
+      <div class="item-h"><span class="nm">aidb.${esc(r.name)}</span>
+        <span class="meta">${RELKIND[r.kind]||r.kind} · ${r.columns.length} columns${r.kind==='r'||r.kind==='m'?` · ${r.est_rows<0?'not analyzed yet':'~'+r.est_rows+' rows'} · ${bytes(r.size)}`:''}${r.can_select?'':' · no SELECT privilege'}</span>
+        <span class="btnrow"><button class="btn ghost small" data-act="cols">Columns</button><button class="btn ghost small" data-act="browse" ${r.can_select?'':'disabled'}>Browse rows</button></span></div>
+      ${r.comment?`<p class="desc" style="margin:6px 0 0;">${esc(r.comment)}</p>`:''}
+      <div class="chips">${r.columns.slice(0,14).map(c=>`<span class="chip">${esc(c.name)}</span>`).join('')}${r.columns.length>14?`<span class="chip muted">+${r.columns.length-14}</span>`:''}</div>
+      <div class="relout"></div>
+    </div>`).join('') : '<div class="empty"><strong>No tables or views match</strong>Try a column name such as <code>model</code> or <code>pipeline</code>.</div>';
+  $('relList').querySelectorAll('.item').forEach(it=>{
+    const r=CAT.relations.find(x=>x.name===it.dataset.rel), out=it.querySelector('.relout');
+    it.querySelector('[data-act=cols]').addEventListener('click',()=>{
+      out.innerHTML = out.dataset.v==='cols' ? '' : table(r.columns.map(c=>({column:c.name,type:c.type,'not null':c.notnull?'yes':'',comment:c.comment})));
+      out.dataset.v = out.dataset.v==='cols' ? '' : 'cols';
+    });
+    it.querySelector('[data-act=browse]').addEventListener('click',async e=>{
+      e.target.disabled=true; out.innerHTML='<p class="muted">Loading…</p>'; out.dataset.v='rows';
+      try{
+        const d=await api('/api/browse',{relation:r.name,limit:100});
+        out.innerHTML = d.ok ? `<p class="muted" style="margin:8px 0 0;">Showing ${d.data.rows.length} of ${d.data.total} rows.</p>`+table(d.data.rows, r.columns.map(c=>c.name)) : `<p class="err">${esc(d.error)}</p>`;
+      } catch(err){ out.innerHTML=`<p class="err">${esc(err.message)}</p>`; }
+      finally{ e.target.disabled=false; }
+    });
+  });
+}
+$('relSearch').addEventListener('input',()=>CAT&&renderRelations());
+
+/* ======================= types ======================= */
+function renderTypes(){
+  $('nTy').textContent=CAT.types.length;
+  const order={e:0,d:1,c:2,b:3};
+  const list=[...CAT.types].sort((a,b)=>order[a.kind]-order[b.kind]||a.name.localeCompare(b.name));
+  // where each type is used as a parameter or result
+  const usage=t=>CAT.functions.filter(f=>(f.args+' '+f.result).includes('aidb.'+t.name)).map(f=>f.name);
+  $('typeList').innerHTML = list.length ? list.map(t=>{
+    const used=[...new Set(usage(t))];
+    let body='';
+    if (t.kind==='e') body=`<div class="chips">${(t.labels||[]).map(l=>`<span class="chip">'${esc(l)}'</span>`).join('')}</div>`;
+    if (t.kind==='d') body=`<div class="chips"><span class="chip">base ${esc(t.base)}</span>${t.check?`<span class="chip">${esc(t.check)}</span>`:''}</div>`;
+    if (t.kind==='c') body=`<div class="chips">${(t.fields||[]).map(x=>`<span class="chip">${esc(x.name)} ${esc(x.type)}</span>`).join('')}</div>`;
+    return `<div class="item"><div class="item-h"><span class="nm">aidb.${esc(t.name)}</span><span class="meta">${TYPKIND[t.kind]||t.kind}${used.length?` · used by ${used.length} function${used.length===1?'':'s'}`:''}</span></div>
+      ${t.comment?`<p class="desc" style="margin:6px 0 0;">${esc(t.comment)}</p>`:''}${body}
+      ${used.length?`<p class="muted" style="font-size:12px;margin:8px 0 0;font-family:var(--mono);">${esc(used.slice(0,12).join(', '))}${used.length>12?' …':''}</p>`:''}</div>`;
+  }).join('') : '<p class="muted">No user-visible types in the aidb schema.</p>';
+}
+
+/* ======================= settings ======================= */
+function renderSettings(){
+  $('nSet').textContent=CAT.settings.length;
+  if (!CAT.settings.length){ $('setList').innerHTML='<div class="empty"><strong>No aidb.* settings visible</strong>They appear once the aidb library is loaded; add <code>aidb</code> to <code>shared_preload_libraries</code> and restart.</div>'; return; }
+  $('setList').innerHTML = CAT.settings.map(s=>{
+    const changed = s.source!=='default';
+    const risky = /insecure|allow_/.test(s.name) && ['on','true','1'].includes(String(s.setting).toLowerCase());
+    return `<div class="item"><div class="item-h"><span class="nm">${esc(s.name)}</span>
+      <span class="b ${risky?'coral':changed?'gold':''}">${esc(s.setting)}${s.unit?' '+esc(s.unit):''}</span>
+      <span class="meta">${changed?`changed from ${esc(s.boot_val)} via ${esc(s.source)}`:'default'} · ${esc(s.vartype)} · set at ${esc(s.context)} level</span></div>
+      ${s.short_desc?`<p class="desc" style="margin:6px 0 0;">${esc(s.short_desc)}</p>`:''}
+      ${s.enumvals?`<div class="chips">${s.enumvals.map(v=>`<span class="chip">${esc(v)}</span>`).join('')}</div>`:''}
+      ${risky?'<p class="err" style="margin:6px 0 0;">Allows plaintext HTTP egress to private addresses. Turn it off outside of lab environments.</p>':''}</div>`;
+  }).join('');
+}
+
+/* ======================= models ======================= */
+const CAPS = {
+  'aidb-openai-text-embeddings':       {label:'text embeddings', color:'var(--c-kb)'},
+  'aidb-openai-text-image-embeddings': {label:'image embeddings', color:'var(--c-prep)'},
+  'aidb-openai-text-completion':       {label:'completion', color:'var(--c-models)'},
+  'aidb-nim-ocr':                      {label:'OCR', color:'var(--c-tools)'},
+};
+const LOCAL_PROVIDERS = /^(bert|clip|t5|llama|llamacpp_|dummy)/;
+function capOf(fn){ return CAPS[fn] || {label:fn.replace(/^aidb-(openai-)?/,''), color:'var(--c-other)'}; }
+function testQuery(m){
+  const fns=m.functions||[], q=`'${String(m.name).replace(/'/g,"''")}'`;
+  if (fns.includes('aidb-openai-text-embeddings')) return `-- returns the embedding size; local models may download weights on first use\nSELECT array_length(aidb.encode_text(${q}, 'hello world'), 1) AS dimensions;`;
+  if (fns.includes('aidb-openai-text-completion')) return `-- calls the model; remote providers bill for tokens\nSELECT aidb.generate_text(${q}, 'Reply with the single word: ready');`;
+  if (fns.includes('aidb-openai-text-image-embeddings')) return `SELECT array_length(aidb.encode_text(${q}, 'a photo of a cat'), 1) AS dimensions;`;
+  return `SELECT * FROM aidb.get_model(${q});`;
+}
+function renderModels(rows){
+  if (!rows.length) return '<p class="muted">No models registered yet.</p>';
+  const byCap={}; let local=0;
+  rows.forEach(m=>{ (m.functions||[]).forEach(f=>byCap[f]=(byCap[f]||0)+1); if (LOCAL_PROVIDERS.test(m.provider)) local++; });
+  const summary = Object.entries(byCap).map(([f,n])=>{const c=capOf(f);return `<span class="cap" style="background:${c.color}">${n} ${esc(c.label)}</span>`;}).join('')
+    + `<span class="b">${local} run inside Postgres</span><span class="b">${rows.length-local} call an external API</span>`;
+  const fact=(k,v)=>v===undefined||v===null||v===''?'':`<span class="k">${esc(k)}</span> ${esc(v)}<br>`;
+  const body = rows.map((m,i)=>{
+    const cfg=(m.options&&m.options.config)||{};
+    const caps=(m.functions||[]).map(f=>{const c=capOf(f);return `<span class="cap" style="background:${c.color}">${esc(c.label)}</span>`;}).join('') || '<span class="muted" style="font-size:12px;">none</span>';
+    const facts = fact('credential', m.credential) + fact('model', cfg.model)
+      + fact('hf', cfg.hf_model) + fact('file', cfg.model_file)
+      + fact('context', cfg.n_ctx!==undefined ? Number(cfg.n_ctx).toLocaleString()+' tokens' : '')
+      + fact('rev', cfg.revision ? String(cfg.revision).slice(0,10) : '')
+      + fact('url', cfg.url)
+      + fact('query prefix', cfg.query_prefix!==undefined ? JSON.stringify(cfg.query_prefix) : '')
+      + fact('document prefix', cfg.document_prefix!==undefined ? JSON.stringify(cfg.document_prefix) : '')
+      + fact('sampling', [cfg.temperature!==undefined?'temp '+cfg.temperature:'', cfg.top_p!==undefined?'top_p '+cfg.top_p:''].filter(Boolean).join(', '))
+      + (cfg.mmproj_file ? fact('vision projector', cfg.mmproj_file) : '');
+    return `<div class="mrow">
+      <div class="mname">${esc(m.name)}</div>
+      <div class="mprov">${esc(m.provider)}<br><span class="muted">${LOCAL_PROVIDERS.test(m.provider)?'in-database':'external API'}</span></div>
+      <div>${caps}</div>
+      <div class="mfacts">${facts || '<span class="muted">default config</span>'}</div>
+      <div class="mact"><button class="btn ghost small" data-mi="${i}" data-act="cfg">Config</button><button class="btn ghost small" data-mi="${i}" data-act="try">Test in console</button></div>
+      <div class="mcfg" id="mcfg-${i}"><pre class="code">${esc(JSON.stringify(m.options,null,2))}</pre></div>
+    </div>`;
+  }).join('');
+  return `<div class="msum">${summary}</div>
+    <div class="mgrid"><div class="mhead">Name</div><div class="mhead">Provider</div><div class="mhead">Can do</div><div class="mhead">Configuration</div><div class="mhead"></div>${body}</div>`;
+}
+function wireModels(rows){
+  document.querySelectorAll('[data-mi]').forEach(b=>b.addEventListener('click',()=>{
+    const m=rows[b.dataset.mi];
+    if (b.dataset.act==='cfg') $('mcfg-'+b.dataset.mi).classList.toggle('on');
+    else openInEditor(testQuery(m));
+  }));
+}
+
+/* ======================= inventory ======================= */
+async function loadInventory(){
+  $('invList').innerHTML='<p class="muted">Querying live objects…</p>';
+  try{
+    const r=await api('/api/inventory');
+    INV=r.items;
+    const total=INV.filter(i=>i.ok).reduce((n,i)=>n+i.rows.length,0);
+    $('nInv').textContent=total;
+    $('invList').innerHTML = INV.map(i=>`
+      <div class="inv-h"><h2>${esc(i.label)}</h2><span class="n">${i.ok?i.rows.length:'unavailable'}</span></div>
+      ${i.ok ? (i.key==='models' ? renderModels(i.rows) : i.rows.length?table(i.rows):'<p class="muted">None created yet.</p>') : `<p class="err">${esc(i.error.split('\n')[0])}</p>`}
+      <details class="sql"><summary>Query</summary><pre class="code">${hl(i.sql)}</pre></details>`).join('');
+    const mi=INV.find(i=>i.key==='models'&&i.ok); if (mi) wireModels(mi.rows);
+  } catch(e){ $('invList').innerHTML=`<p class="err">${esc(e.message)}</p>`; }
+}
+$('btnInvRefresh').addEventListener('click',loadInventory);
+
+/* ======================= SQL editor ======================= */
+const PRESETS = [
+  ['list_models()', "select aidb.list_models();"],
+  ['\\df aidb.*', "\\df aidb.*"],
+  ['Providers', "SELECT * FROM aidb.model_providers;"],
+  ['Semantic KBs', "SELECT * FROM aidb.list_semantic_kbs();"],
+  ['KB search', "SELECT source_type, entity_type, relation_name, column_name, score\nFROM aidb.semantic_kb_search(query_text => 'customer orders', top_k => 10);"],
+  ['Relationships', "SELECT left_object, right_object, kind, status, confidence, join_expr\nFROM aidb.list_relationships();"],
+  ['Tools', "SELECT name, tool_type, read_only, description FROM aidb.list_native_tools();"],
+  ['Pipeline errors', "SELECT * FROM aidb.get_all_error_summaries();"],
+  ['aidb GUCs', "SELECT name, setting, source FROM pg_settings WHERE name LIKE 'aidb.%';"],
+  ['Extensions', "\\dx"],
+];
+let editor = null, fmt = 'grid', lastRun = null;
+const LS_SQL='aidb_introspect.sql', LS_HIST='aidb_introspect.history';
+function lsGet(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+
+function getEditor(){ return editor ? editor.getValue() : $('consoleSql').value; }
+function getRunnable(){
+  if (editor){ const sel=editor.getSelection(); if (sel.trim()) return sel; }
+  else { const ta=$('consoleSql'); if (ta.selectionEnd>ta.selectionStart) return ta.value.slice(ta.selectionStart,ta.selectionEnd); }
+  return getEditor();
+}
+function setEditor(text){ if (editor){ editor.setValue(text); editor.focus(); editor.setCursor(editor.lineCount(),0); } else { $('consoleSql').value=text; $('consoleSql').focus(); } }
+function openInEditor(text, note){ setEditor(text); const n=$('edNote'); if(note){ n.textContent=note; n.hidden=false; } else { n.hidden=true; } show('console'); if (editor) setTimeout(()=>editor.refresh(),0); }
+
+(function initEditor(){
+  const saved=lsGet(LS_SQL,null); if (saved) $('consoleSql').value=saved;
+  if (window.CodeMirror){
+    editor = CodeMirror.fromTextArea($('consoleSql'),{
+      mode:'text/x-pgsql', lineNumbers:true, matchBrackets:true, indentUnit:2, tabSize:2, lineWrapping:false,
+      extraKeys:{'Ctrl-Enter':runConsole,'Cmd-Enter':runConsole,'Ctrl-Space':'autocomplete','Tab':cm=>cm.execCommand(cm.somethingSelected()?'indentMore':'insertSoftTab')},
+      hintOptions:{completeSingle:false, tables:{}},
+    });
+    editor.on('change',()=>lsSet(LS_SQL,editor.getValue()));
+    editor.on('inputRead',(cm,ch)=>{ if (ch.text[0]==='.' ) cm.showHint({completeSingle:false}); });
+    $('edMode').textContent='';
+  } else {
+    $('consoleSql').addEventListener('input',()=>lsSet(LS_SQL,$('consoleSql').value));
+    $('consoleSql').addEventListener('keydown',e=>{ if ((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); runConsole(); } });
+    $('edHint').textContent='Ctrl+Enter runs the selection or everything';
+    $('edMode').textContent='Plain editor (syntax highlighting loads from cdnjs.cloudflare.com when reachable)';
+  }
+  renderHistory();
+})();
+function updateHints(){
+  if (!editor || !CAT) return;
+  const tables={};
+  CAT.relations.forEach(r=>tables['aidb.'+r.name]=r.columns.map(c=>c.name));
+  CAT.functions.forEach(f=>{ if (!tables['aidb.'+f.name]) tables['aidb.'+f.name]=parseArgs(f.args).filter(a=>a.name&&a.mode!=='OUT').map(a=>a.name+' =>'); });
+  editor.setOption('hintOptions',{completeSingle:false,tables,defaultTable:null});
+}
+function renderPresets(){
+  const have=new Set(CAT.functions.map(f=>f.name));
+  $('presets').innerHTML=PRESETS.map((p,i)=>[p,i]).filter(([[,sql]])=>{ const m=sql.match(/aidb\.([a-z_]+)\(/); return !m||have.has(m[1]); })
+    .map(([[l],i])=>`<button class="preset" data-i="${i}">${esc(l)}</button>`).join('');
+  $('presets').querySelectorAll('.preset').forEach(b=>b.addEventListener('click',()=>setEditor(PRESETS[b.dataset.i][1])));
+  updateHints();
+}
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{
+  fmt=b.dataset.fmt; document.querySelectorAll('.seg button').forEach(x=>x.classList.toggle('on',x===b));
+}));
+$('optVertical').addEventListener('change',()=>{ if (lastRun && lastRun.format==='grid') renderGrid(lastRun); });
+$('optWrite').addEventListener('change',e=>{
+  if (e.target.checked && !confirm('Allow writes? Statements will run without the read-only guard, as the connected role.')) e.target.checked=false;
+});
+
+function renderHistory(){
+  const h=lsGet(LS_HIST,[]);
+  $('history').innerHTML='<option value="">History</option>'+h.map((q,i)=>`<option value="${i}">${esc(q.replace(/\s+/g,' ').slice(0,70))}</option>`).join('');
+}
+$('history').addEventListener('change',e=>{ const h=lsGet(LS_HIST,[]); if (e.target.value!=='') setEditor(h[e.target.value]); e.target.value=''; });
+function pushHistory(q){ const h=lsGet(LS_HIST,[]).filter(x=>x!==q); h.unshift(q); lsSet(LS_HIST,h.slice(0,40)); renderHistory(); }
+
+function expandableFunctions(){
+  if (!CAT) return [];
+  return CAT.functions.filter(f=>f.returns_set || /^TABLE\(|record/i.test(f.result||'') || /\bOUT\s/.test(f.args||'')
+    || CAT.types.some(t=>t.kind==='c' && f.result==='aidb.'+t.name)).map(f=>f.name);
+}
+
+async function runConsole(){
+  const sql=getRunnable(); if (!sql.trim()) return;
+  const btn=$('btnRun'); btn.disabled=true;
+  $('consoleOut').innerHTML='<p class="muted" style="margin-top:14px;">Running…</p>';
+  const t0=performance.now();
+  try{
+    const r=await api('/api/console',{
+      sql, format:fmt, expandRecords:$('optExpand').checked, expandFunctions:expandableFunctions(),
+      vertical:$('optVertical').checked, timeout:Number($('optTimeout').value), allowWrites:$('optWrite').checked,
+    });
+    r.elapsed=Math.round(performance.now()-t0);
+    pushHistory(sql.trim());
+    if (!r.ok){ $('consoleOut').innerHTML=`<div class="res bad"><pre class="code err">${esc(r.error)}</pre></div>`; return; }
+    lastRun=r;
+    r.format==='text' ? renderText(r) : renderGrid(r);
+  } catch(e){ $('consoleOut').innerHTML=`<p class="err">Couldn't reach the local server: ${esc(e.message)}</p>`; }
+  finally{ btn.disabled=false; }
+}
+$('btnRun').addEventListener('click',runConsole);
+
+function renderText(r){
+  const notes=(r.statements||[]).filter(s=>s.expanded_from).map(s=>`<div class="res-note">Ran <code>${esc(s.expanded_from)}</code> as <code>${esc(s.text)}</code> — untick “Split records into columns” for the raw record output.</div>`).join('');
+  $('consoleOut').innerHTML=`<div class="res"><div class="res-h"><span class="meta">${r.elapsed} ms round trip</span>
+    <span class="btnrow"><button class="btn ghost small" id="copyText">Copy</button></span></div>${notes}<pre class="psql">${esc(r.output)}</pre></div>`;
+  $('copyText').addEventListener('click',e=>copyText(r.output,e.target));
+}
+
+/* ---- value parsing: JSON, Postgres arrays {a,b}, records (a,b), aidb's key={json} ---- */
+function parseComposite(s, open, close, quoteEsc){
+  if (typeof s!=='string' || s[0]!==open || s[s.length-1]!==close) return null;
+  const body=s.slice(1,-1); if (body==='') return [];
+  if (open==='{' && body[0]==='{') return null;               // multi-dimensional: leave raw
+  const out=[]; let i=0;
+  while (i<=body.length){
+    if (body[i]==='"'){
+      let j=i+1, v='';
+      while (j<body.length){
+        const ch=body[j];
+        if (ch==='\\'){ v+=body[j+1]; j+=2; continue; }
+        if (ch==='"'){ if (quoteEsc && body[j+1]==='"'){ v+='"'; j+=2; continue; } break; }
+        v+=ch; j++;
+      }
+      out.push(v); i=j+2;
+    } else {
+      let j=body.indexOf(',',i); if (j<0) j=body.length;
+      const v=body.slice(i,j); out.push(open==='{' ? (v==='NULL'?null:v) : (v===''?null:v)); i=j+1;
+    }
+    if (i>body.length) break;
+  }
+  return out;
+}
+function smart(v, depth=0){
+  if (v===null || v===undefined || v==='' || depth>4) return v;
+  if (typeof v!=='string') return v;
+  const t=v.trim();
+  if (t==='{}') return [];
+  if ((t[0]==='{'&&t.endsWith('}'))||(t[0]==='['&&t.endsWith(']'))){ try{ return deep(JSON.parse(t),depth); }catch(e){} }
+  const kv=t.match(/^([A-Za-z_]\w*)=(\{[\s\S]*\}|\[[\s\S]*\])$/);
+  if (kv){ try{ return {[kv[1]]:deep(JSON.parse(kv[2]),depth)}; }catch(e){} }
+  const arr=parseComposite(t,'{','}',false); if (arr) return arr.map(x=>smart(x,depth+1));
+  const rec=parseComposite(t,'(',')',true); if (rec && rec.length>1) return {__record:rec.map(x=>smart(x,depth+1))};
+  return v;
+}
+function deep(o,depth){ if (Array.isArray(o)) return o.map(x=>typeof x==='string'?smart(x,depth+1):x); if (o&&typeof o==='object'){ const r={}; for (const k in o) r[k]=typeof o[k]==='string'?smart(o[k],depth+1):o[k]; return r; } return o; }
+function flatArrayOfPrims(a){ return Array.isArray(a) && a.every(x=>x===null||['string','number','boolean'].includes(typeof x)); }
+function cellHTML(raw){
+  if (raw===null || raw===undefined || raw==='') return {cls:'null',html:'∅',rich:false};
+  const v=smart(raw);
+  if (typeof v==='string'){
+    const num=/^-?\d+(\.\d+)?(e[+-]?\d+)?$/i.test(v);
+    return {cls:num?'num':'', html:`<span class="clip" title="${esc(v.length>1500?v.slice(0,1500)+'…':v)}">${esc(v)}</span>`, rich:v.length>60};
+  }
+  if (flatArrayOfPrims(v) && v.length<=6 && v.every(x=>String(x??'').length<48))
+    return {cls:'', html: v.length? v.map(x=>`<span class="arr">${esc(x??'NULL')}</span>`).join('') : '<span class="tag">empty array</span>', rich:false};
+  let tag='json';
+  if (Array.isArray(v)) tag=`${v.length} item${v.length===1?'':'s'}`; else if (v.__record) tag='record'; else tag=`{${Object.keys(v).slice(0,3).join(', ')}${Object.keys(v).length>3?', …':''}}`;
+  const preview=JSON.stringify(v.__record||v);
+  return {cls:'', html:`<span class="clip"><span class="tag">${esc(tag)}</span>${esc(preview.slice(0,300))}</span>`, rich:true};
+}
+
+function renderGrid(r){
+  const vertical=$('optVertical').checked;
+  const notes=(r.notices||[]).filter(n=>!/allow_insecure_egress/.test(n)).map(n=>`<div class="notice">${esc(n)}</div>`).join('');
+  const total=r.results.length;
+  const blocks=r.results.map((res,k)=>{
+    const head=`<span class="idx">${total>1?'#'+(k+1):'Result'}</span>`;
+    const sql=`<div class="res-sql">${esc(res.text)}</div>`;
+    if (res.status==='skipped') return `<div class="res"><div class="res-h">${head}<span class="meta">not run — an earlier statement failed</span></div>${sql}</div>`;
+    if (res.status==='error') return `<div class="res bad"><div class="res-h">${head}<span class="meta">failed</span></div>${sql}<pre class="code err">${esc(res.error)}</pre></div>`;
+    const note=res.expanded_from?`<div class="res-note">Ran <code>${esc(res.expanded_from)}</code> as <code>${esc(res.text)}</code> so each field gets a column.</div>`:'';
+    const ms=res.ms!=null?` · ${res.ms<1000?res.ms.toFixed(1)+' ms':(res.ms/1000).toFixed(2)+' s'}`:'';
+    if (res.raw!==undefined) return `<div class="res"><div class="res-h">${head}<span class="meta">${ms.slice(3)}</span></div>${sql}<pre class="psql">${esc(res.raw)}</pre></div>`;
+    if (res.no_result) return `<div class="res"><div class="res-h">${head}<span class="meta">done, no rows returned${ms}</span></div>${sql}</div>`;
+    const count=`${res.total_rows} row${res.total_rows===1?'':'s'}${res.truncated?` (showing first ${res.rows.length})`:''}${ms}`;
+    const actions=`<span class="btnrow"><button class="btn ghost small" data-exp="tsv" data-k="${k}">Copy as TSV</button><button class="btn ghost small" data-exp="csv" data-k="${k}">Download CSV</button><button class="btn ghost small" data-exp="json" data-k="${k}">Download JSON</button></span>`;
+    return `<div class="res"><div class="res-h">${head}<span class="meta">${count}</span>${actions}</div>${sql}${note}${vertical?verticalHTML(res,k):gridHTML(res,k)}</div>`;
+  }).join('');
+  $('consoleOut').innerHTML=notes+blocks;
+  $('consoleOut').querySelectorAll('[data-exp]').forEach(b=>b.addEventListener('click',()=>exportResult(r.results[b.dataset.k],b.dataset.exp,b)));
+  $('consoleOut').querySelectorAll('td[data-r]').forEach(td=>td.addEventListener('click',()=>{
+    const res=r.results[td.dataset.k]; openDrawer(res.columns[td.dataset.c], res.rows[td.dataset.r][td.dataset.c]);
+  }));
+}
+function gridHTML(res,k){
+  if (!res.rows.length) return `<div class="tw"><table class="t"><thead><tr>${res.columns.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead></table></div><p class="muted">No rows.</p>`;
+  const body=res.rows.map((row,ri)=>'<tr>'+row.map((v,ci)=>{ const x=cellHTML(v);
+    return `<td class="${x.cls} ${v?'clickable':''}" ${v?`data-k="${k}" data-r="${ri}" data-c="${ci}"`:''}>${x.html}</td>`; }).join('')+'</tr>').join('');
+  return `<div class="tw"><table class="t"><thead><tr>${res.columns.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function verticalHTML(res,k){
+  return res.rows.slice(0,500).map((row,ri)=>`<div class="vrec"><div class="vrec-h">-[ RECORD ${ri+1} ]-</div><table>${
+    row.map((v,ci)=>{ const x=cellHTML(v); return `<tr><td>${esc(res.columns[ci])}</td><td class="${x.cls} ${v?'clickable':''}" ${v?`data-k="${k}" data-r="${ri}" data-c="${ci}"`:''}>${x.html}</td></tr>`; }).join('')
+  }</table></div>`).join('') + (res.rows.length>500?'<p class="muted">Vertical view shows the first 500 rows.</p>':'');
+}
+function openDrawer(col, raw){
+  const v=smart(raw);
+  const pretty=typeof v==='string'?v:JSON.stringify(v.__record?v.__record:v,null,2);
+  $('drawerTitle').textContent=col;
+  $('drawerBody').innerHTML=(typeof v!=='string'?`<p class="muted" style="font-size:12px;">Parsed view</p><pre class="code">${esc(pretty)}</pre>`:'')
+    +`<p class="muted" style="font-size:12px;">Raw value as returned by Postgres (${raw.length.toLocaleString()} characters)</p><pre class="code">${esc(raw)}</pre>`;
+  $('drawer').hidden=false; $('drawer').dataset.copy=pretty; $('drawerClose').focus();
+}
+$('drawerClose').addEventListener('click',()=>$('drawer').hidden=true);
+$('drawerCopy').addEventListener('click',e=>copyText($('drawer').dataset.copy||'',e.target));
+document.addEventListener('keydown',e=>{ if (e.key==='Escape') $('drawer').hidden=true; });
+
+function exportResult(res,kind,btn){
+  const q=v=>{ if (v===null||v===undefined) return ''; v=String(v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  if (kind==='tsv'){ copyText([res.columns.join('\t'),...res.rows.map(r=>r.map(v=>String(v??'').replace(/[\t\n]/g,' ')).join('\t'))].join('\n'),btn); return; }
+  let blob, name;
+  if (kind==='csv'){ blob=new Blob([[res.columns.map(q).join(','),...res.rows.map(r=>r.map(q).join(','))].join('\n')],{type:'text/csv'}); name='result.csv'; }
+  else { const objs=res.rows.map(r=>Object.fromEntries(r.map((v,i)=>[res.columns[i],smart(v)]))); blob=new Blob([JSON.stringify(objs,null,2)],{type:'application/json'}); name='result.json'; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ======================= snapshots & diff ======================= */
+function snapshot(){
+  return {
+    tool:'aidb-introspect', format:1, captured_at:new Date().toISOString(),
+    aidb_version:CAT.extension.version, server_version:CAT.server.server_version, database:CAT.server.database,
+    functions:CAT.functions.map(f=>({name:f.name, identity_args:f.identity_args, args:f.args, result:f.result, kind:f.kind, volatility:f.volatility})),
+    relations:CAT.relations.map(r=>({name:r.name, kind:r.kind, columns:r.columns.map(c=>({name:c.name,type:c.type}))})),
+    types:CAT.types.map(t=>({name:t.name, kind:t.kind, labels:t.labels, base:t.base, fields:t.fields})),
+    settings:CAT.settings.map(s=>({name:s.name, boot_val:s.boot_val, vartype:s.vartype})),
+  };
+}
+$('btnSnap').addEventListener('click',()=>{
+  const s=snapshot();
+  const blob=new Blob([JSON.stringify(s,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`aidb-${s.aidb_version}-${s.database}-snapshot.json`; a.click(); URL.revokeObjectURL(a.href);
+});
+$('snapFile').addEventListener('change',e=>{
+  const file=e.target.files[0]; if (!file) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const base=JSON.parse(rd.result);
+      if (base.tool!=='aidb-introspect') throw new Error('This file is not an AIDB Introspector snapshot.');
+      renderDiff(base, snapshot());
+      const bn=$('btnShowNew'); if (bn) bn.addEventListener('click',()=>{ $('fnOnlyNew').checked=true; $('fnHideInternal').checked=false; $('fnCat').value=''; $('fnSearch').value=''; renderFnList(); show('functions'); });
+    } catch(err){ $('cmpStatus').textContent=err.message; $('cmpStatus').classList.add('err'); }
+  };
+  rd.readAsText(file); e.target.value='';
+});
+function renderDiff(A, B){
+  $('cmpStatus').classList.remove('err');
+  $('cmpStatus').textContent=`Baseline: aidb ${A.aidb_version} (${A.database}, ${A.captured_at.slice(0,10)})   →   current: aidb ${B.aidb_version} (${B.database})`;
+  const key=f=>`${f.name}(${f.identity_args})`;
+  const fa=new Map(A.functions.map(f=>[key(f),f])), fb=new Map(B.functions.map(f=>[key(f),f]));
+  const addedF=[...fb.keys()].filter(k=>!fa.has(k)), removedF=[...fa.keys()].filter(k=>!fb.has(k));
+  // overloads whose identity changed (same name on both sides) = signature changes
+  const namesA=new Set(A.functions.map(f=>f.name)), namesB=new Set(B.functions.map(f=>f.name));
+  const sigChanged=[...new Set([...addedF,...removedF].map(k=>k.split('(')[0]))].filter(n=>namesA.has(n)&&namesB.has(n));
+  const newNames=[...namesB].filter(n=>!namesA.has(n)).sort(), goneNames=[...namesA].filter(n=>!namesB.has(n)).sort();
+  const changedF=[...fb.keys()].filter(k=>fa.has(k) && (fa.get(k).result!==fb.get(k).result || fa.get(k).args!==fb.get(k).args));
+  const status=new Map();
+  addedF.forEach(k=>status.set(k, namesA.has(k.split('(')[0]) ? 'changed' : 'new'));
+  changedF.forEach(k=>status.set(k,'changed'));
+  BASE={version:A.aidb_version, status};
+  $('fnOnlyNewWrap').hidden=false; $('fnOnlyNewLbl').textContent=`Only new or changed since ${A.aidb_version}`;
+  if (CAT) renderFnList();
+
+  const ra=new Map(A.relations.map(r=>[r.name,r])), rb=new Map(B.relations.map(r=>[r.name,r]));
+  const relAdd=[...rb.keys()].filter(k=>!ra.has(k)), relRem=[...ra.keys()].filter(k=>!rb.has(k));
+  const colChg=[];
+  rb.forEach((r,k)=>{ if(!ra.has(k)) return;
+    const ca=new Map(ra.get(k).columns.map(c=>[c.name,c.type])), cb=new Map(r.columns.map(c=>[c.name,c.type]));
+    const add=[...cb.keys()].filter(c=>!ca.has(c)), rem=[...ca.keys()].filter(c=>!cb.has(c)), typ=[...cb.keys()].filter(c=>ca.has(c)&&ca.get(c)!==cb.get(c));
+    if (add.length||rem.length||typ.length) colChg.push({k,add,rem,typ:typ.map(c=>`${c}: ${ca.get(c)} → ${cb.get(c)}`)});
+  });
+  const ta=new Map(A.types.map(t=>[t.name,t])), tb=new Map(B.types.map(t=>[t.name,t]));
+  const typeLines=[];
+  tb.forEach((t,k)=>{ if(!ta.has(k)) typeLines.push(['add',`${k} (${TYPKIND[t.kind]||t.kind})`, (t.labels||[]).join(', ')]);
+    else if (t.kind==='e'){ const la=ta.get(k).labels||[], lb=t.labels||[]; const add=lb.filter(l=>!la.includes(l)), rem=la.filter(l=>!lb.includes(l));
+      if(add.length||rem.length) typeLines.push(['chg',k,[add.length?'+ '+add.join(', '):'', rem.length?'− '+rem.join(', '):''].filter(Boolean).join('   ')]); } });
+  ta.forEach((t,k)=>{ if(!tb.has(k)) typeLines.push(['rem',k,'']); });
+  const sa=new Map(A.settings.map(s=>[s.name,s])), sb=new Map(B.settings.map(s=>[s.name,s]));
+  const setLines=[];
+  sb.forEach((s,k)=>{ if(!sa.has(k)) setLines.push(['add',k,`default ${s.boot_val}`]); else if (sa.get(k).boot_val!==s.boot_val) setLines.push(['chg',k,`default ${sa.get(k).boot_val} → ${s.boot_val}`]); });
+  sa.forEach((s,k)=>{ if(!sb.has(k)) setLines.push(['rem',k,'']); });
+
+  const L=(cls,txt,sub)=>`<div class="dline ${cls}">${cls==='add'?'+ ':cls==='rem'?'− ':'~ '}${esc(txt)}${sub?`<span class="sub">${esc(sub)}</span>`:''}</div>`;
+  const col=(title,items)=>`<div class="dcol"><h3>${esc(title)} <span class="muted" style="font-family:var(--mono);font-size:12px;">${items.length}</span></h3>${items.join('')||'<p class="muted">No differences.</p>'}</div>`;
+  const fb2=n=>B.functions.filter(f=>f.name===n), fa2=n=>A.functions.filter(f=>f.name===n);
+  $('cmpOut').innerHTML = `
+    <div class="btnrow" style="margin-top:14px;"><button class="btn small" id="btnShowNew">Open the ${status.size} new or changed functions</button></div>
+    <p class="lede" style="margin-top:16px;">${B.functions.length-A.functions.length>=0?'+':''}${B.functions.length-A.functions.length} functions overall (${A.functions.length} → ${B.functions.length}); ${newNames.length} new names, ${goneNames.length} removed, ${sigChanged.length} with changed parameters.</p>
+    <div class="diffgrid">
+      ${col('New functions', newNames.map(n=>L('add',n,fb2(n).map(f=>`(${f.identity_args}) → ${f.result}`).join('\n'))))}
+      ${col('Removed functions', goneNames.map(n=>L('rem',n,fa2(n).map(f=>`(${f.identity_args})`).join('\n'))))}
+      ${col('Changed parameters', sigChanged.map(n=>L('chg',n,'was: '+fa2(n).map(f=>`(${f.identity_args})`).join(' | ')+'\nnow: '+fb2(n).map(f=>`(${f.identity_args})`).join(' | '))))}
+      ${col('Changed defaults or return type', changedF.map(k=>L('chg',k.split('(')[0], fa.get(k).result!==fb.get(k).result?`returns ${fa.get(k).result} → ${fb.get(k).result}`:'defaults changed')))}
+      ${col('Tables & views', [...relAdd.map(k=>L('add',k)), ...relRem.map(k=>L('rem',k)), ...colChg.map(c=>L('chg',c.k,[c.add.length?'+ '+c.add.join(', '):'',c.rem.length?'− '+c.rem.join(', '):'',...c.typ].filter(Boolean).join('\n')))])}
+      ${col('Types & enum values', typeLines.map(([c,t,s])=>L(c,t,s)))}
+      ${col('Settings', setLines.map(([c,t,s])=>L(c,t,s)))}
+    </div>`;
+}
+
+/* ======================= SHOWCASE: plain-English guided tour ======================= */
+let INV_PROMISE = null, scStep = 0, scNotes = false, scToken = 0;
+const SC_AREA = {
+  models:['Talk to AI models','Register a model once, then call it from SQL'],
+  kb:['Search by meaning','Find content by what it means, not just its words'],
+  pipe:['Prepare data automatically','Turn raw data into AI-ready data and keep it current'],
+  prep:['Read documents and images','Parse, split, scan and summarize'],
+  semantic:['Understand your tables','Teach AI what your data means and how it joins'],
+  agents:['Agents','Assistants that work through a task in steps'],
+  tools:['Tools for agents','What an agent is allowed to do'],
+  cred:['Keys and network rules','Protect model keys and outbound calls'],
+  gov:['Audit and governance','Record and limit what happens'],
+  config:['Setup helpers','Ready-made model and index settings'],
+  catalog:['Look inside the database','Schemas, tables and health checks'],
+  vol:['Files and storage','Read files from S3 or a folder'],
+  bdr:['Multi-node replication','Keep AI objects in step across nodes'],
+  other:['Memory and extras','Agent memory and small utilities'],
+};
+const SC_CAP = {
+  'aidb-openai-text-embeddings':'Understands text', 'aidb-openai-text-image-embeddings':'Understands images',
+  'aidb-openai-text-completion':'Writes text', 'aidb-nim-ocr':'Reads scans (OCR)',
+};
+const invRows = key => { const i=(INV||[]).find(x=>x.key===key); return i && i.ok ? i.rows : null; };
+const lit = v => "'" + String(v).replace(/'/g, "''") + "'";
+const yn = v => v===true||v==='t'||v==='true' ? 'yes' : 'no';
+function clip(s,n){ s=String(s??''); return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+async function scSql(sql, opts){
+  const r = await api('/api/console', Object.assign({sql, format:'grid', expandRecords:false, timeout:60, allowWrites:false}, opts||{}));
+  if (!r.ok) throw new Error(r.error);
+  const res = r.results[0];
+  if (res.status==='error') throw new Error(res.error);
+  const cols = res.columns || [];
+  return (res.rows||[]).map(row=>Object.fromEntries(cols.map((c,i)=>[c,row[i]])));
+}
+function scErr(e){ return `<div class="sc-empty"><strong>That didn't run</strong>${esc(String(e.message||e).split('\n')[0])}</div>`; }
+const tile = (n,l,cls) => `<div class="sc-tile ${cls||''}"><div class="${String(n).length>6?'t':'n'}">${esc(n)}</div><div class="l">${esc(l)}</div></div>`;
+const sqlDetails = sql => `<details class="sql" style="margin-top:12px;"><summary>The SQL behind this</summary><pre class="code">${hl(sql)}</pre></details>`;
+
+/* ---- the seven steps ---- */
+const SC_STEPS = [
+ { short:'1 · AI inside', title:'Your database already speaks AI',
+   plain:'AIDB is an add-on that lives inside Postgres. Everything it can do is a command you run in SQL, so the AI work happens next to your data rather than in a separate system.',
+   example:'<b>In a business:</b> the team that runs your customer database can add search and assistants without copying data into another platform.',
+   why:'Fewer moving parts: no extra servers to run, secure or keep in sync.',
+   notes:'Point at the big numbers. They are counted live from this server, not from a slide. Then click one of the areas to show that each tile is a group of real commands.',
+   sql:"SELECT proname, pg_get_function_arguments(oid) FROM pg_proc WHERE pronamespace = 'aidb'::regnamespace ORDER BY 1;",
+   render: scSurface },
+ { short:'2 · Models', title:'Choose the AI brain, local or hosted',
+   plain:'AIDB works with models that run inside the database and with hosted ones from other providers. You register a model once, give it a name, and every feature can then use it.',
+   example:'<b>In a business:</b> start with a small local model while you experiment, then switch to a hosted one for quality, without changing the application.',
+   why:'You choose the trade-off between privacy, cost and quality, and you can change your mind later.',
+   notes:'Local models keep text inside Postgres. Hosted models send text to the provider. The Try it button calls the model once; hosted providers bill for tokens.',
+   sql:'SELECT * FROM aidb.list_models();', render: scModels },
+ { short:'3 · Keys', title:'Passwords and keys stay locked away',
+   plain:'Hosted AI services need an API key. In 7.8 each key lives in a named credential: it can be shared with chosen colleagues and limited to the websites it is allowed to call.',
+   example:'<b>In a business:</b> the data science team can use the company key without anyone being able to read it.',
+   why:'Teams get to use AI without secrets being copied into scripts or chat messages.',
+   notes:'Stress that this page never shows a key. The server replaces anything that looks like a secret before it reaches the browser. The leaked-key scan checks model settings for keys pasted in by mistake.',
+   sql:'SELECT name, owner, endpoint, shared, has_secret, can_use FROM aidb.credentials;', render: scKeys },
+ { short:'4 · Your data', title:'Teach AI how your tables connect',
+   plain:'Database tables have cryptic names. The semantic layer records what they mean and how they link together, so a question in plain language can be matched to the right data.',
+   example:'<b>In a business:</b> “orders” links to “customers” through a customer ID. Once that is recorded, an assistant can combine them correctly.',
+   why:'Answers come from the right tables, joined the right way, instead of guesses.',
+   notes:'If no semantic knowledge base exists yet, the empty state shows how to create one. Relationships can be found from foreign keys and from queries people already ran, and they are reviewed before being accepted.',
+   sql:'SELECT * FROM aidb.list_semantic_kbs();', render: scSemantic },
+ { short:'5 · Ask', title:'Ask a question in everyday words',
+   plain:'Type a question. AIDB turns it into numbers that capture its meaning and finds the closest matches, even when the exact words differ.',
+   example:'<b>Try:</b> “customer email address” to find the data, or “How do I send back an item?” to find a help article.',
+   why:'People find things by describing them, not by knowing table names or exact keywords.',
+   notes:'Use Find data first, since it needs only a semantic knowledge base. Find documents needs a knowledge base built from documents. Both call an embedding model to understand the question.',
+   sql:"SELECT * FROM aidb.semantic_kb_search(query_text => 'customer orders', top_k => 6);", render: scAsk },
+ { short:'6 · Agents', title:'Let an agent work through a task',
+   plain:'An agent is an assistant that breaks a request into steps. At each step it can use a tool, such as searching a knowledge base or running an approved query, and then decide what to do next.',
+   example:'<b>In a business:</b> “Which renewals are at risk this month?” becomes a series of lookups the agent runs for you.',
+   why:'Agents only use the tools you give them, and each tool call can be limited to one database role.',
+   notes:'The tool cards are the catalog of what an agent may do. Asking an agent a question is the one action on this page that writes to the database, because the conversation is recorded, so it asks for confirmation.',
+   sql:'SELECT name, tool_type, read_only, description FROM aidb.list_native_tools();', render: scAgents },
+ { short:'7 · Health', title:'Spot problems before users do',
+   plain:'Pipelines keep your AI-ready data up to date in the background. AIDB records anything that failed, and you can run a health check or compare this server with an earlier version.',
+   example:'<b>In a business:</b> a Monday-morning check shows whether last night’s document import finished cleanly.',
+   why:'Operations teams get a plain answer to “is it working?” and “what changed since the upgrade?”.',
+   notes:'A clean error summary is a good result. The compare page needs a snapshot file from an older server; download one from 7.7 beforehand to show what 7.8 added.',
+   sql:'SELECT * FROM aidb.get_all_error_summaries();', render: scHealth },
+];
+
+/* ---- step 1: the surface ---- */
+async function scSurface(box){
+  const pub = CAT.functions.filter(f=>f.cat!=='internal');
+  const counts = {}; pub.forEach(f=>counts[f.cat]=(counts[f.cat]||0)+1);
+  const areas = CATS.filter(c=>counts[c.id]);
+  box.innerHTML = `<div class="sc-tiles">${tile('aidb '+CAT.extension.version,'installed version')}${tile(pub.length,'commands you can run')}${tile(areas.length,'areas of capability')}${tile(CAT.relations.length,'tables and views')}</div>
+    <h3>What the commands cover <span class="muted" style="font-size:13px;font-family:var(--body);">(select one to see the commands)</span></h3>
+    <div class="sc-areas">${areas.map(c=>{const a=SC_AREA[c.id]||[c.name,''];return `<button class="sc-area" data-cat="${c.id}"><span class="bar" style="background:${c.color}"></span><span><div class="t">${esc(a[0])}</div><div class="d">${esc(a[1])}</div></span><span class="c">${counts[c.id]}</span></button>`;}).join('')}</div>`;
+  box.querySelectorAll('.sc-area').forEach(b=>b.addEventListener('click',()=>{ $('fnSearch').value=''; $('fnKind').value=''; $('fnCat').value=b.dataset.cat; renderFnList(); show('functions'); }));
+}
+
+/* ---- step 2: models ---- */
+async function scModels(box){
+  await INV_PROMISE;
+  const rows = invRows('models');
+  if (!rows) return box.innerHTML = scErr({message:(INV.find(i=>i.key==='models')||{}).error||'Models could not be listed.'});
+  const provs = (invRows('list_providers')||invRows('providers')||[]).length;
+  if (!rows.length) return box.innerHTML = `<div class="sc-empty"><strong>No models registered yet</strong>AIDB's built-in local models should always be listed. If they are not, check the AIDB installation; to add your own use <code>aidb.create_model()</code>.${provs?` This server supports ${provs} provider${provs===1?'':'s'}.`:''}</div>`;
+  const local = rows.filter(m=>LOCAL_PROVIDERS.test(m.provider)).length;
+  box.innerHTML = `<div class="sc-tiles">${tile(rows.length,'models registered')}${tile(local,'run inside Postgres')}${tile(rows.length-local,'call an outside service')}${provs?tile(provs,'providers supported'):''}</div>
+    <div class="sc-cards">${rows.map((m,i)=>{
+      const cfg=(m.options&&m.options.config)||{}, isLocal=LOCAL_PROVIDERS.test(m.provider), fns=m.functions||[];
+      const can=fns.map(f=>`<span class="sc-pill">${esc(SC_CAP[f]||f.replace(/^aidb-(openai-)?/,''))}</span>`).join('');
+      const tryable = fns.includes('aidb-openai-text-embeddings') || fns.includes('aidb-openai-text-completion');
+      return `<div class="sc-card"><h4>${esc(m.name)}</h4>
+        <div class="sc-chips"><span class="sc-pill ${isLocal?'good':'warn'}">${isLocal?'runs inside Postgres':'outside service'}</span>${can}</div>
+        <div class="row"><span>Provider</span><b>${esc(m.provider)}</b></div>
+        ${cfg.model?`<div class="row"><span>Model</span><b>${esc(cfg.model)}</b></div>`:''}
+        ${tryable?`<div class="sc-actions" style="margin-top:10px;"><button class="btn ghost small" data-try="${i}">Try it</button></div><div class="sc-tryout" id="scTry${i}"></div>`:''}</div>`;
+    }).join('')}</div>`;
+  box.querySelectorAll('[data-try]').forEach(b=>b.addEventListener('click',async()=>{
+    const m=rows[b.dataset.try], out=$('scTry'+b.dataset.try), fns=m.functions||[];
+    const emb=fns.includes('aidb-openai-text-embeddings');
+    const sql = emb ? `SELECT array_length(aidb.encode_text(${lit(m.name)}, 'hello world'), 1) AS dimensions` : `SELECT aidb.generate_text(${lit(m.name)}, 'Reply with the single word: ready') AS answer`;
+    b.disabled=true; out.innerHTML='<p class="sc-sub">Calling the model…</p>';
+    try{ const r=await scSql(sql,{timeout:120}); const v=r[0]&&Object.values(r[0])[0];
+      out.innerHTML = `<div class="sc-bubble">${emb?`The sentence “hello world” became a list of <b>${esc(v)}</b> numbers that capture its meaning.`:esc(v)}</div>`; }
+    catch(e){ out.innerHTML=scErr(e); } finally{ b.disabled=false; }
+  }));
+}
+
+/* ---- step 3: keys ---- */
+async function scKeys(box){
+  await INV_PROMISE;
+  const creds=invRows('credentials'), leaks=invRows('leaked_credentials');
+  const egress=(CAT.settings||[]).find(s=>/allow_insecure_egress/.test(s.name));
+  const allow=(CAT.settings||[]).find(s=>s.name==='aidb.egress_allowlist'||s.name==='edb.egress_allowlist') ;
+  const allowList=allow&&String(allow.setting||'').trim()?String(allow.setting).split(',').map(x=>x.trim()).filter(Boolean):[];
+  const egressOn = egress && ['on','true','1'].includes(String(egress.setting).toLowerCase());
+  let html = `<div class="sc-callout"><span class="ic">•••</span><span>This page never shows a key. Anything stored under a name like <code>api_key</code> or <code>password</code> is replaced with “redacted” on the server before it reaches your browser.</span></div>`;
+  html += `<div class="sc-tiles">${creds?tile(creds.length,'named credentials'):tile('7.8+','named credentials')}${creds?tile(creds.filter(c=>c.has_secret===true).length,'hold a stored key'):''}${leaks?tile(leaks.length,leaks.length?'leaked keys found':'leaked keys found', leaks.length?'bad':'good'):''}${egress?tile(egressOn?'on':'off','insecure outbound calls allowed',egressOn?'bad':'good'):''}${allow?tile(allowList.length?allowList.length+' sites':'open',allowList.length?'outbound calls limited to this allowlist':'no outbound allowlist set',allowList.length?'good':'warn'):''}</div>`;
+  if (!creds) html += `<div class="sc-empty"><strong>Named credentials aren't on this server</strong>They arrived in AIDB 7.8. This server doesn't expose <code>aidb.credentials</code>, so it is probably running an earlier version.</div>`;
+  else if (!creds.length) html += `<div class="sc-empty"><strong>No credentials yet</strong>Run <code>demo-data/02_models_and_credentials.sql</code>, or create one with <code>aidb.create_credential()</code> and attach it to a model with <code>credential =&gt; 'name'</code>.</div>`;
+  else html += `<h3>Credentials on this server</h3><div class="sc-cards">${creds.map(c=>`<div class="sc-card"><h4>${esc(c.name)}</h4>
+      <div class="row"><span>Key stored</span><b class="${c.has_secret===true?'good':''}">${yn(c.has_secret)}</b></div>
+      <div class="row"><span>Shared with other roles</span><b>${yn(c.shared)}</b></div>
+      <div class="row"><span>Allowed to call</span><b>${esc(c.endpoint||'any host')}</b></div>
+      <div class="row"><span>Owner</span><b>${esc(c.owner||'')}</b></div>
+      <div class="row"><span>You can use it</span><b class="${c.can_use===true?'good':''}">${yn(c.can_use)}</b></div></div>`).join('')}</div>`;
+  if (allowList.length) html += `<h3>Where AIDB may connect</h3><p class="sc-sub">Outbound calls to model providers and model downloads are refused for any host not on this list.</p><div class="sc-chips">${allowList.map(x=>`<span class="sc-pill">${esc(x)}</span>`).join('')}</div>`;
+  if (leaks && leaks.length) html += `<h3>Models with a key in their settings</h3>${table(leaks)}`;
+  box.innerHTML = html;
+}
+
+/* ---- step 4: semantic layer ---- */
+async function scSemantic(box){
+  await INV_PROMISE;
+  const kbs=invRows('semantic_kbs'), stats=invRows('semantic_kb_stats')||[];
+  if (!kbs) return box.innerHTML = scErr({message:(INV.find(i=>i.key==='semantic_kbs')||{}).error||'Semantic knowledge bases could not be listed.'});
+  if (!kbs.length){
+    box.innerHTML = `<div class="sc-empty"><strong>No semantic knowledge base yet</strong>Run <code>demo-data/03_semantic_layer.sql</code>, or create one over your own schema and AIDB will index the tables, columns and comments for you.
+      <div class="sc-actions"><button class="btn ghost small" id="scMk">Open the example in the SQL editor</button></div></div>`;
+    $('scMk').addEventListener('click',()=>openInEditor("-- indexes your tables so questions can be matched to them\nSELECT aidb.create_semantic_kb(\n  name => 'demo_kb',\n  model => 'bert',\n  schemas => ARRAY['public']\n);"));
+    return;
+  }
+  const kb = (stats[0]&&stats[0].kb_name) || kbs[0].name, st = stats.find(s=>s.kb_name===kb)||{};
+  box.innerHTML = `<p class="sc-sub">Semantic knowledge base: <code>${esc(kb)}</code>${kbs.length>1?` (and ${kbs.length-1} more)`:''}</p>
+    <div class="sc-tiles">${tile(st.tables??'–','tables indexed')}${tile(st.views??'–','views indexed')}${tile(st.columns??'–','columns described')}${tile(st.relationships??'–','known relationships')}${st.pending!==undefined?tile(st.pending,'waiting to be processed',Number(st.pending)>0?'warn':''):''}</div>
+    <h3>How your tables connect</h3><div class="sc-actions" style="margin-top:0"><button class="btn small" id="scRel">Show the connections</button></div><div id="scRelOut"></div>
+    <h3>Find the route between two tables</h3>
+    <div class="sc-ask"><input type="text" id="scFrom" placeholder="from, e.g. shop.order_items"><input type="text" id="scTo" placeholder="to, e.g. shop.customers"><button class="btn ghost" id="scPath">Find route</button></div><div id="scPathOut"></div>`;
+  $('scRel').addEventListener('click',async e=>{
+    e.target.disabled=true; $('scRelOut').innerHTML='<p class="sc-sub">Reading relationships…</p>';
+    const sql=`SELECT left_object, right_object, kind, confidence, join_expr FROM aidb.list_relationships(kb_name => ${lit(kb)}) ORDER BY confidence DESC NULLS LAST LIMIT 12`;
+    try{ const r=await scSql(sql);
+      $('scRelOut').innerHTML = r.length ? r.map(x=>`<div class="sc-join"><b>${esc(x.left_object)}</b><span class="arrow">→</span><b>${esc(x.right_object)}</b><span class="sc-pill">${esc(x.kind)}</span><code>${esc(x.join_expr||'')}</code></div>`).join('')+sqlDetails(sql)
+        : `<div class="sc-empty" style="margin-top:10px;"><strong>No relationships recorded yet</strong>Foreign keys are picked up when the knowledge base is processed. Relationships can also be learned from query history.</div>`;
+    }catch(err){ $('scRelOut').innerHTML=scErr(err); } finally{ e.target.disabled=false; }
+  });
+  $('scPath').addEventListener('click',async e=>{
+    const a=$('scFrom').value.trim(), b=$('scTo').value.trim(); if(!a||!b) return;
+    e.target.disabled=true; $('scPathOut').innerHTML='<p class="sc-sub">Looking for a route…</p>';
+    const sql=`SELECT path_rank, hops, route, join_clause FROM aidb.find_join_path(kb_name => ${lit(kb)}, from_object => ${lit(a)}, to_object => ${lit(b)})`;
+    try{ const r=await scSql(sql);
+      $('scPathOut').innerHTML = r.length ? r.map(x=>`<div class="sc-join"><b>Route ${esc(x.path_rank)}</b><span class="sc-pill">${esc(x.hops)} hop${x.hops==='1'?'':'s'}</span><span>${esc(x.route)}</span><code>${esc(x.join_clause||'')}</code></div>`).join('')+sqlDetails(sql)
+        : '<div class="sc-empty" style="margin-top:10px;">No route found between those two tables.</div>';
+    }catch(err){ $('scPathOut').innerHTML=scErr(err); } finally{ e.target.disabled=false; }
+  });
+}
+
+/* ---- step 5: ask in plain English ---- */
+async function scAsk(box){
+  await INV_PROMISE;
+  const kbRel = CAT.relations.find(r=>/knowledge_base/.test(r.name) && r.columns.some(c=>c.name==='name'));
+  let kbNames=[];
+  if (kbRel){ try{ kbNames=(await scSql(`SELECT name FROM aidb.${quote(kbRel.name)} ORDER BY name`)).map(r=>r.name); }catch(e){} }
+  const hasSem=(invRows('semantic_kbs')||[]).length>0;
+  const EXS={schema:['customer email address','how much money did customers spend','order status values'], docs:['How do I send back an item?','I cannot sign in to my account','Is this tent covered if the zip breaks?']};
+  box.innerHTML = `<div class="seg" id="scMode" style="margin-bottom:14px;"><button data-m="schema" class="on">Find data</button><button data-m="docs">Find documents</button></div>
+    <p class="sc-sub" id="scModeHelp"></p>
+    <div class="sc-ask"><input type="search" id="scQ" placeholder="Type a question…" autocomplete="off"><input type="text" id="scKb" list="scKbList" placeholder="knowledge base name" hidden><datalist id="scKbList">${kbNames.map(n=>`<option value="${esc(n)}">`).join('')}</datalist><button class="btn" id="scGo">Ask</button></div>
+    <div class="presets" id="scEx"></div><div id="scAns" style="margin-top:14px;"></div>`;
+  let mode='schema';
+  const setMode=m=>{ mode=m;
+    box.querySelectorAll('#scMode button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+    $('scKb').hidden = m!=='docs';
+    $('scModeHelp').textContent = m==='schema' ? (hasSem?'Searches the descriptions of your tables and columns.':'Needs a semantic knowledge base. None exists on this server yet, so this will return an error.') : (kbNames.length?`Searches the content of a knowledge base. Found: ${kbNames.join(', ')}.`:'Searches the content of a knowledge base. Type its name below.');
+    if (m==='docs' && kbNames.length && !$('scKb').value) $('scKb').value=kbNames[0];
+    $('scEx').innerHTML = EXS[m].map(x=>`<button class="preset">${esc(x)}</button>`).join('');
+    $('scEx').querySelectorAll('.preset').forEach(b=>b.addEventListener('click',()=>{ $('scQ').value=b.textContent; ask(); }));
+  };
+  box.querySelectorAll('#scMode button').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.m)));
+  async function ask(){
+    const q=$('scQ').value.trim(); if(!q) return;
+    const kb=$('scKb').value.trim(); if(mode==='docs' && !kb){ $('scAns').innerHTML='<div class="sc-empty">Type the name of a knowledge base first.</div>'; return; }
+    $('scGo').disabled=true; $('scAns').innerHTML='<p class="sc-sub">Understanding the question…</p>';
+    const sql = mode==='schema'
+      ? `SELECT source_type, entity_type, relation_name, column_name, object_ref, definition, comment, score FROM aidb.semantic_kb_search(query_text => ${lit(q)}, top_k => 6)`
+      : `SELECT key, value, distance FROM aidb.retrieve_text(knowledge_base_name => ${lit(kb)}, query => ${lit(q)}::text, topk => 5)`;
+    try{
+      const r = await scSql(sql,{timeout:120});
+      if(!r.length){ $('scAns').innerHTML='<div class="sc-empty"><strong>Nothing matched</strong>Try different words, or check that the knowledge base has been processed.</div>'; return; }
+      const best = mode==='schema' ? Math.max(...r.map(x=>Number(x.score)||0),1e-9) : null;
+      const maxD = mode==='docs' ? Math.max(...r.map(x=>Number(x.distance)||0),1e-9) : null;
+      $('scAns').innerHTML = r.map((x,i)=>{
+        const title = mode==='schema' ? (x.object_ref || [x.relation_name,x.column_name].filter(Boolean).join('.')) : x.key;
+        const text = mode==='schema' ? (x.definition||x.comment||'') : x.value;
+        const pct = mode==='schema' ? Math.round(100*(Number(x.score)||0)/best) : Math.round(100*(1-(Number(x.distance)||0)/(maxD*1.15)));
+        const meta = mode==='schema' ? `${x.entity_type||''}${x.source_type?' · '+x.source_type:''}` : `distance ${Number(x.distance).toFixed(3)} (lower is closer)`;
+        return `<div class="sc-hit"><div class="rk">${i+1}</div><div><div class="tt">${esc(title)}</div><div class="sc-sub" style="margin:2px 0 0;">${esc(meta)}</div>${text?`<div class="tx">${esc(clip(text,320))}</div>`:''}<div class="sc-meter"><i style="width:${Math.max(6,Math.min(100,pct))}%"></i></div></div></div>`;
+      }).join('') + sqlDetails(sql);
+    }catch(e){ $('scAns').innerHTML=scErr(e); } finally{ $('scGo').disabled=false; }
+  }
+  $('scGo').addEventListener('click',ask);
+  $('scQ').addEventListener('keydown',e=>{ if(e.key==='Enter') ask(); });
+  setMode('schema');
+}
+function quote(n){ return '"'+String(n).replace(/"/g,'""')+'"'; }
+
+/* ---- step 6: agents and tools ---- */
+async function scAgents(box){
+  await INV_PROMISE;
+  const native=invRows('native_tools')||[], mcp=invRows('mcp_tools')||[];
+  const agentRel = CAT.relations.find(r=>/^agents?$/.test(r.name));
+  let agents=[];
+  if (agentRel && agentRel.can_select){ try{ const d=await api('/api/browse',{relation:agentRel.name,limit:50}); if(d.ok) agents=d.data.rows; }catch(e){} }
+  const names = agents.map(a=>a.name||a.agent_name).filter(Boolean);
+  const ro = native.filter(t=>t.read_only===true).length;
+  let html = `<div class="sc-tiles">${tile(native.length,'built-in and SQL tools')}${tile(ro,'read-only')}${tile(native.length-ro,'can change data',native.length-ro?'warn':'')}${tile(mcp.length,'tools from MCP servers')}${agentRel?tile(agents.length,'agents defined'):''}</div>`;
+  html += `<h3>What an agent is allowed to do</h3>`;
+  html += native.length||mcp.length ? `<div class="sc-cards">${native.concat(mcp).map(t=>`<div class="sc-card"><h4>${esc(t.name)}</h4><div class="sc-chips"><span class="sc-pill ${t.read_only===true?'good':'warn'}">${t.read_only===true?'read-only':'can change data'}</span><span class="sc-pill">${esc(t.tool_type)}</span></div><p>${esc(clip(t.description,170))}</p></div>`).join('')}</div>`
+    : `<div class="sc-empty"><strong>No tools listed</strong>Tools are listed with <code>aidb.list_native_tools()</code>. None came back on this server.</div>`;
+  html += `<h3>Ask an agent</h3>`;
+  if (names.length) html += `<p class="sc-sub">Asking records the conversation in the database, so it needs confirmation. The agent is started in read-only mode.</p>
+    <div class="sc-ask"><select id="scAg" style="max-width:240px;font-family:var(--body);font-size:15px;">${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><textarea id="scPr" placeholder="e.g. How many customers are in each region?"></textarea><button class="btn" id="scAsk2">Ask</button></div><div id="scAgOut"></div>`;
+  else html += `<div class="sc-empty"><strong>${agentRel?'No agents defined yet':'Agents not found on this server'}</strong>Run <code>demo-data/05_agents_and_tools.sql</code>, or create one with <code>aidb.create_agent()</code>. It will appear here.
+      <div class="sc-actions"><button class="btn ghost small" id="scMkAg">Open an example in the SQL editor</button></div></div>`;
+  box.innerHTML = html;
+  const mk=$('scMkAg'); if(mk) mk.addEventListener('click',()=>openInEditor("SELECT * FROM aidb.create_agent(\n  name => 'demo_agent',\n  instructions => 'Answer questions about our data. Use the tools you are given.',\n  model => 'qwen3.5-0.8b-Q8_0',\n  tools => ARRAY['run_sql_query']\n);"));
+  const go=$('scAsk2'); if(go) go.addEventListener('click',async()=>{
+    const ag=$('scAg').value, pr=$('scPr').value.trim(); if(!pr) return;
+    if(!confirm('Asking an agent records the conversation in the database and calls the agent\u2019s model. Continue?')) return;
+    go.disabled=true; $('scAgOut').innerHTML='<p class="sc-sub">The agent is working…</p>';
+    const sql=`SELECT message, conversation_id, error FROM aidb.agent_converse(agent_name => ${lit(ag)}, prompt => ${lit(pr)}, read_only => true)`;
+    try{ const r=await scSql(sql,{allowWrites:true,timeout:180}); const x=r[0]||{};
+      $('scAgOut').innerHTML = x.error ? `<div class="sc-empty" style="margin-top:12px;"><strong>The agent reported a problem</strong>${esc(x.error)}</div>` : `<div class="sc-bubble">${esc(x.message||'(no reply)')}</div>`+sqlDetails(sql);
+    }catch(e){ $('scAgOut').innerHTML=scErr(e); } finally{ go.disabled=false; }
+  });
+}
+
+/* ---- step 7: health ---- */
+async function scHealth(box){
+  await INV_PROMISE;
+  const errs=invRows('pipeline_errors'), hasCred=CAT.relations.some(r=>r.name==='credentials');
+  const workers=(CAT.workers||[]).length;
+  let html = `<div class="sc-tiles">${errs?tile(errs.length?errs.reduce((n,e)=>n+Number(e.error_count||0),0):0,errs.length?'failed pipeline steps':'failed pipeline steps',errs.length?'bad':'good'):''}${tile(workers,'background workers visible')}${tile(hasCred?'yes':'no','named credentials (7.8)',hasCred?'good':'')}</div>`;
+  html += errs===null ? scErr({message:'Pipeline errors could not be read on this server.'})
+    : errs.length ? `<h3>What failed</h3>${table(errs)}` : `<div class="sc-callout"><span class="ic">✓</span><span>No pipeline step has failed. Nothing needs attention.</span></div>`;
+  html += `<div class="sc-actions"><button class="btn small" id="scHc">Run a health check</button><button class="btn ghost small" id="scCmp">What changed since an earlier version?</button></div><div id="scHcOut"></div>`;
+  box.innerHTML = html;
+  $('scCmp').addEventListener('click',()=>show('compare'));
+  $('scHc').addEventListener('click',async e=>{
+    e.target.disabled=true; $('scHcOut').innerHTML='<p class="sc-sub">Checking…</p>';
+    const sql='SELECT aidb.analyze_db_health() AS report';
+    try{ const r=await scSql(sql,{timeout:120}); const v=smart(r[0]&&r[0].report);
+      $('scHcOut').innerHTML = `<h3>Health report</h3><pre class="code">${esc(typeof v==='string'?v:JSON.stringify(v,null,2))}</pre>`+sqlDetails(sql);
+    }catch(err){ $('scHcOut').innerHTML=scErr(err); } finally{ e.target.disabled=false; }
+  });
+}
+
+
+/* ---- demo readiness: what is set up, and which script fixes what is missing ---- */
+async function scReadiness(){
+  const box=$('scReady');
+  if (!box.hidden){ box.hidden=true; return; }
+  box.hidden=false; box.innerHTML='<p class="sc-sub">Checking this server…</p>';
+  try{
+    await INV_PROMISE;
+    const models=invRows('models')||[], creds=invRows('credentials')||[], kbs=invRows('semantic_kbs')||[],
+          tools=invRows('native_tools')||[], aliases=invRows('semantic_aliases')||[], errs=invRows('pipeline_errors');
+    let docKbs=[], agents=[];
+    try{ docKbs=await scSql('SELECT name FROM aidb.knowledge_bases'); }catch(e){}
+    try{ agents=await scSql('SELECT name FROM aidb.agents'); }catch(e){}
+    const checks=[
+      ['Step 2','Built-in local model (bert)', models.some(m=>m.name==='bert'), 'Built in. If missing, check the AIDB installation.'],
+      ['Step 3','Named credential (7.8)', creds.some(c=>c.name!=='none'), 'demo-data/02_models_and_credentials.sql'],
+      ['Steps 4, 5','Semantic knowledge base', kbs.length>0, 'demo-data/03_semantic_layer.sql'],
+      ['Step 4','Saved queries', aliases.length>0, 'demo-data/03_semantic_layer.sql'],
+      ['Step 5','Document knowledge base', docKbs.length>0, 'demo-data/04_documents.sql'],
+      ['Step 6','Custom tool', tools.some(t=>t.name==='customer_open_tickets'), 'demo-data/05_agents_and_tools.sql'],
+      ['Step 6','An agent to ask', agents.length>0, 'demo-data/05_agents_and_tools.sql'],
+      ['Step 7','No failed pipeline steps', errs!==null && errs.length===0, 'Open step 7 to see what failed.'],
+    ];
+    const ok=checks.filter(c=>c[2]).length;
+    box.innerHTML = `<div class="sc-tiles">${tile(ok+' of '+checks.length,'demo pieces ready',ok===checks.length?'good':'warn')}</div>`
+      + checks.map(c=>`<div class="sc-join"><span class="sc-pill ${c[2]?'good':'bad'}">${c[2]?'ready':'missing'}</span><b>${esc(c[1])}</b><span class="sc-sub" style="margin:0;">${esc(c[0])}</span>${c[2]?'':`<code>${esc(c[3])}</code>`}</div>`).join('')
+      + `<p class="sc-sub" style="margin-top:14px;">To set everything up, run <code>demo-data/run_demo_setup.sh</code> in a terminal. Details are in the README.</p>`;
+  }catch(e){ box.innerHTML=scErr(e); }
+}
+$('scReadyBtn').addEventListener('click',scReadiness);
+
+
+/* ---- ready-to-run queries for each step (they use the demo data from demo-data/) ---- */
+const SC_QUERIES = {
+ 0:[
+  {label:'How many commands does AIDB add?', sql:"SELECT count(*) AS commands\nFROM pg_proc\nWHERE pronamespace = 'aidb'::regnamespace;",
+   expect:'One number. It is larger than the tile above because it also counts internal helper functions.'},
+  {label:'List the commands that search by meaning', sql:"SELECT proname\nFROM pg_proc\nWHERE pronamespace = 'aidb'::regnamespace\n  AND (proname LIKE '%semantic%' OR proname LIKE 'retrieve%')\nORDER BY 1;",
+   expect:'A list of names such as retrieve_text, retrieve_key and semantic_kb_search.'},
+ ],
+ 1:[
+  {label:'Which models are registered, and where do they run?', sql:"SELECT name, provider, credential\nFROM aidb.list_models()\nORDER BY provider, name;",
+   expect:'The built-in models (bert, clip, t5, llama and others), plus demo_hosted_gpt if you ran the demo setup. Providers ending in _local or starting with llamacpp run inside Postgres.'},
+  {label:'Turn a sentence into numbers with the local bert model', model:true, sql:"SELECT array_length(\n         aidb.encode_text('bert', 'warm jacket for a cold night'), 1\n       ) AS numbers_per_sentence;",
+   expect:'384. The sentence became a list of 384 numbers that capture its meaning. The first call downloads the model, so it can take a while.'},
+ ],
+ 2:[
+  {label:'List the credentials (the key itself is never shown)', sql:"SELECT name, owner, endpoint, shared, has_secret, can_use\nFROM aidb.credentials\nORDER BY name;",
+   expect:'A row for demo_hosted_ai: endpoint api.openai.com, shared t, has_secret t. The built-in "none" credential is also listed.'},
+  {label:'Scan for keys pasted into model settings by mistake', sql:"SELECT * FROM aidb.audit_leaked_credentials();",
+   expect:'No rows. An empty result is the good answer.'},
+  {label:'Where may AIDB connect?', sql:"SELECT name, setting\nFROM pg_settings\nWHERE name LIKE '%egress%'\nORDER BY name;",
+   expect:'The outbound allowlist and the insecure-egress switch. The allowlist is the list of hosts AIDB may call.'},
+ ],
+ 3:[
+  {label:'What has AIDB learned about the shop schema?', sql:"SELECT * FROM aidb.semantic_kb_stats(kb_name => 'shop_kb');",
+   expect:'tables = 6 (customers, products, orders, order_items, support_tickets, kb_articles), a count of columns and relationships, and pending = 0. If tables is 0, wait a moment and run it again.'},
+  {label:'How do the tables connect?', sql:"SELECT left_object, right_object, kind, join_expr\nFROM aidb.list_relationships(kb_name => 'shop_kb');",
+   expect:'Links such as orders to customers and order_items to orders, with the join condition in the last column.'},
+  {label:'Find the route between two tables', sql:"SELECT path_rank, hops, route, join_clause\nFROM aidb.find_join_path(\n       kb_name     => 'shop_kb',\n       from_object => 'shop.order_items',\n       to_object   => 'shop.customers');",
+   expect:'A route that goes through shop.orders, with the join clause to use.'},
+ ],
+ 4:[
+  {label:'Find the data by describing it', model:true, sql:"SELECT source_type, entity_type, relation_name, column_name, rank\nFROM aidb.semantic_kb_search(\n       query_text => 'customer email address',\n       kb_name    => 'shop_kb',\n       top_k      => 5);",
+   expect:'The email column of the customers table at or near the top, although the question never says "customers.email".'},
+  {label:'Find a help article by meaning', model:true, sql:"SELECT key, left(value, 100) AS passage, round(distance::numeric, 3) AS distance\nFROM aidb.retrieve_text(\n       (SELECT name FROM aidb.knowledge_bases WHERE name LIKE '%shop_articles_kb' LIMIT 1),\n       'How do I send back an item?',\n       topk => 3);",
+   expect:'The "Returns and refunds" article (key 1) first, although it never uses the words "send back an item". A smaller distance means a closer match.'},
+  {label:'Run a saved, trusted query for last month', sql:"SELECT result\nFROM aidb.execute_semantic_alias(\n       alias_name => 'repeat_customers',\n       args => jsonb_build_object(\n         'month', EXTRACT(MONTH FROM current_date - INTERVAL '1 month')::int,\n         'year',  EXTRACT(YEAR  FROM current_date - INTERVAL '1 month')::int));",
+   expect:'Three customers: Maya Cohen, Noah Schmidt and Lucas Tanaka, each with 2 orders.'},
+ ],
+ 5:[
+  {label:'What may an assistant use?', sql:"SELECT name, tool_type, read_only\nFROM aidb.tools\nORDER BY tool_type, name;",
+   expect:'Every tool in one list. Look for customer_open_tickets: a custom SQL tool, read_only t.'},
+  {label:'Which assistants exist?', sql:"SELECT name, model, tools, delegates\nFROM aidb.agents\nORDER BY name;",
+   expect:'shop_analyst (with its list of tools) and shop_helpdesk (which delegates to shop_analyst).'},
+  {label:'Run one tool directly, with no AI involved', sql:"SELECT aidb.run_tool(\n         'customer_open_tickets',\n         '{\"customer_id\": 2}'::jsonb);",
+   expect:'One open ticket for customer 2: "Boots arrived in the wrong size". This is exactly what an assistant would get back when it uses the tool.'},
+  {label:'Ask the assistant a question', model:true, write:true, sql:"SELECT *\nFROM aidb.agent_converse(\n       agent_name => 'shop_analyst',\n       prompt     => 'How many customers are in each region?',\n       read_only  => true);",
+   expect:'A short answer in the "message" column. This records the conversation, so it needs the Allow writes tick in the SQL console. The first call downloads the model, which can take several minutes. The small local model may give a rough answer.'},
+ ],
+ 6:[
+  {label:'Has any pipeline step failed?', sql:"SELECT * FROM aidb.get_all_error_summaries();",
+   expect:'No rows. An empty result means nothing has failed.'},
+  {label:'How is the document pipeline doing?', sql:"SELECT * FROM aidb.get_pipeline_metrics('shop_articles_pipe');",
+   expect:'A status row for the pipeline. The source count should be 14, one per help article.'},
+  {label:'Run AIDB\'s built-in health check', sql:"SELECT aidb.analyze_db_health();",
+   expect:'A report in JSON. Click the cell to read it in the side panel.'},
+ ],
+};
+function scQueryBox(i){
+  const qs=SC_QUERIES[i]||[]; if(!qs.length) return '';
+  return `<div class="sc-sqlbox"><h3>Try it yourself in the SQL console</h3>
+    <ol class="sc-how">
+      <li>Press <b>Run here</b> to see the result right below the query, or <b>Open in SQL console</b> to load it into the full editor (then press <b>Run</b>).</li>
+      <li>Compare what you get with <b>You should see</b>. Queries marked <i>calls a model</i> can be slow the first time because the model is downloaded.</li>
+    </ol>
+    ${qs.map((q,k)=>`<div class="sc-q" data-q="${k}"><div class="sc-q-h"><b>${esc(q.label)}</b>${q.model?'<span class="sc-pill warn">calls a model</span>':''}${q.write?'<span class="sc-pill bad">needs “Allow writes” in the console</span>':''}</div>
+      <pre class="code">${hl(q.sql)}</pre>
+      <div class="sc-actions">${q.write?'':'<button class="btn small" data-act="run">Run here</button>'}<button class="btn ghost small" data-act="open">Open in SQL console</button><button class="btn ghost small" data-act="copy">Copy</button></div>
+      <p class="sc-expect"><b>You should see</b> ${esc(q.expect)}</p><div class="sc-q-out"></div></div>`).join('')}</div>`;
+}
+function wireQueryBox(i, root){
+  (SC_QUERIES[i]||[]).forEach((q,k)=>{
+    const el=root.querySelector(`.sc-q[data-q="${k}"]`); if(!el) return;
+    const out=el.querySelector('.sc-q-out');
+    el.querySelector('[data-act=open]').addEventListener('click',()=>openInEditor(q.sql,
+      `Loaded from Showcase step ${i+1}: “${q.label}”. Press Run (or Ctrl+Enter) to execute it.${q.write?' This one records a conversation: tick “Allow writes” first.':''}`));
+    el.querySelector('[data-act=copy]').addEventListener('click',e=>copyText(q.sql,e.target));
+    const run=el.querySelector('[data-act=run]');
+    if(run) run.addEventListener('click',async()=>{
+      run.disabled=true; out.innerHTML='<p class="sc-sub">Running…</p>';
+      try{ const rows=await scSql(q.sql,{timeout:120});
+        out.innerHTML = rows.length ? `<p class="sc-sub">${rows.length} row${rows.length===1?'':'s'}${rows.length>15?' (first 15 shown)':''}</p>`+table(rows.slice(0,15)) : '<p class="sc-sub">No rows. For some queries that is the correct, good result.</p>'; }
+      catch(err){ out.innerHTML=scErr(err); } finally{ run.disabled=false; }
+    });
+  });
+}
+
+/* ---- the stepper ---- */
+function renderShowcase(){
+  if (!CAT) return;
+  const st=SC_STEPS[scStep], token=++scToken;
+  $('scProg').innerHTML = SC_STEPS.map((s,i)=>`<button class="sc-dot ${i===scStep?'on':i<scStep?'done':''}" data-i="${i}" title="${esc(s.title)}">${esc(s.short)}</button>`).join('');
+  $('scProg').querySelectorAll('.sc-dot').forEach(b=>b.addEventListener('click',()=>{ scStep=Number(b.dataset.i); renderShowcase(); }));
+  $('scBody').innerHTML = `<p class="sc-kick">Step ${scStep+1} of ${SC_STEPS.length}</p><h1 class="sc-title">${esc(st.title)}</h1>
+    <p class="sc-plain">${esc(st.plain)}</p><p class="sc-ex">${st.example}</p>
+    <div class="sc-live" id="scLive"><p class="sc-sub">Reading this server…</p></div>
+    <p class="sc-why"><b style="color:var(--gold);font-weight:500;">Why it matters</b> ${esc(st.why)}</p>
+    ${scQueryBox(scStep)}
+    ${scNotes?`<div class="sc-notes"><b>Presenter notes</b> ${esc(st.notes)}</div>`:''}`;
+  wireQueryBox(scStep, $('scBody'));
+  $('scCount').textContent = `${scStep+1} / ${SC_STEPS.length}`;
+  $('scPrev').disabled = scStep===0; $('scNext').disabled = scStep===SC_STEPS.length-1;
+  Promise.resolve(st.render($('scLive'))).catch(e=>{ if(token===scToken) $('scLive').innerHTML=scErr(e); });
+}
+$('scPrev').addEventListener('click',()=>{ if(scStep>0){ scStep--; renderShowcase(); window.scrollTo({top:0}); } });
+$('scNext').addEventListener('click',()=>{ if(scStep<SC_STEPS.length-1){ scStep++; renderShowcase(); window.scrollTo({top:0}); } });
+$('scNotesToggle').addEventListener('change',e=>{ scNotes=e.target.checked; renderShowcase(); });
+$('btnStartTour').addEventListener('click',()=>{ scStep=0; renderShowcase(); show('showcase'); });
+document.addEventListener('keydown',e=>{
+  if (!$('v-showcase').classList.contains('on') || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.altKey||e.ctrlKey||e.metaKey) return;
+  if (e.key==='ArrowRight') $('scNext').click(); if (e.key==='ArrowLeft') $('scPrev').click();
+});
+</script>
+</body>
+</html>

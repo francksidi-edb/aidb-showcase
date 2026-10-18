@@ -1,0 +1,11 @@
+# local connection settings and saved app config (may contain host names or a password)
+env.sh
+.aidb_introspect_config.json
+# python
+venv/
+__pycache__/
+*.pyc
+# os / editor
+.DS_Store
+.idea/
+.vscode/
