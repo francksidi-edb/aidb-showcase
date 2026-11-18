@@ -1,10 +1,25 @@
 # local connection settings and saved app config (may contain host names or a password)
 env.sh
+.env
 .aidb_introspect_config.json
+.aidb_local_config.json
+dashboard/.aidb_introspect_config.json
+dashboard/.aidb_local_config.json
+# runtime state written by reset-demo.sh (pid file, console log)
+.run/
+*.log
 # python
+.venv/
 venv/
 __pycache__/
 *.pyc
+# keys, backups, archives
+*.pem
+*.key
+*.bak
+*.tgz
+*.tar.gz
+*.zip
 # os / editor
 .DS_Store
 .idea/

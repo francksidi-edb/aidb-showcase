@@ -1,0 +1,5 @@
+{
+  "port": 8643,
+  "psql_timeout_seconds": 60,
+  "max_rows_per_result": 5000
+}

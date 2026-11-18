@@ -170,3 +170,21 @@ SELECT result FROM aidb.execute_semantic_alias(
   alias_name => 'monthly_revenue',
   args => jsonb_build_object('month', EXTRACT(MONTH FROM current_date - INTERVAL '1 month')::int,
                              'year',  EXTRACT(YEAR  FROM current_date - INTERVAL '1 month')::int));
+
+-- ================================================================
+-- What 7.9 added (read-only). These objects do not exist on 7.8, so a statement
+-- here fails on an older server. That is expected: run them on 7.9 or later.
+-- ================================================================
+
+-- 7.9.1 Each semantic knowledge base now has a managed plugin; list_semantic_kbs() reports its name
+SELECT name, plugin_name FROM aidb.list_semantic_kbs();
+
+-- 7.9.2 Plugins registered for agents (create_agent_plugin / update_agent_plugin / delete_agent_plugin manage them)
+SELECT * FROM aidb.agent_plugins_registry;
+
+-- 7.9.3 Who wrote the telemetry: 'internal' (AIDB itself) or 'external' (an OTLP sender).
+-- Needs aidb_governance: ordinary aidb_users members cannot read aidb_otel by default.
+-- Rows written before the upgrade to 7.9 are all labelled 'internal'.
+SELECT source, count(*) AS spans
+FROM aidb_otel.traces
+GROUP BY source;

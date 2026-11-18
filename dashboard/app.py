@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-aidb_introspect_server.py — local backend for the "AIDB 7.8 Introspector".
+AIDB Showcase Console
+=====================
+Local backend for the "AIDB Introspector" and guided Showcase (AIDB 7.8 and 7.9).
+
+  python app.py [--port 8643]
 
 Same approach as aidb_server.py (Discover AIDB): every query runs through the
 real `psql` binary, so it works on machines where security agents allow psql
@@ -17,15 +21,18 @@ What it does (read-only by design):
   * /api/browse      first N rows of one aidb table/view (credentials redacted).
   * /api/console     ad-hoc SQL in a READ ONLY transaction with a statement timeout.
 
-Setup:
-    pip install flask
-    python3 aidb_introspect_server.py
+Setup (see install/ for the scripts):
+    pip install -r requirements.txt
+    python3 app.py
     open http://127.0.0.1:8643
 
-Binds to 127.0.0.1 only. Values that end up in SQL go through sql_literal()
-or a strict identifier check — nothing is interpolated raw.
+Settings live in config.json next to this file (port, psql timeout, row cap).
+Binds to 127.0.0.1 only: the API runs queries with your psql credentials, and
+guard_local_api() rejects any other Host header. Values that end up in SQL go
+through sql_literal() or a strict identifier check — nothing is interpolated raw.
 """
 
+import argparse
 import csv
 import io
 import json
@@ -36,12 +43,29 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, request, jsonify, send_from_directory
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(BASE_DIR, ".aidb_introspect_config.json")
-LEGACY_CONFIG_PATH = os.path.join(BASE_DIR, ".aidb_local_config.json")  # from Discover AIDB
-PAGE = "aidb_introspect.html"
-PORT = 8643
-PSQL_TIMEOUT_SECONDS = 60
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(APP_DIR)
+STATIC_DIR = os.path.join(APP_DIR, "static")
+PAGE = "index.html"
+
+# config.json is committed and holds no secrets. A missing or broken file falls back to these defaults.
+_DEFAULTS = {"port": 8643, "psql_timeout_seconds": 60, "max_rows_per_result": 5000}
+try:
+    with open(os.path.join(APP_DIR, "config.json")) as _f:
+        CFG = {**_DEFAULTS, **json.load(_f)}
+except (OSError, ValueError):
+    CFG = dict(_DEFAULTS)
+PORT = int(CFG["port"])
+PSQL_TIMEOUT_SECONDS = int(CFG["psql_timeout_seconds"])
+
+# Connection details saved from the page (may include a password): git-ignored, mode 0600.
+CONFIG_PATH = os.path.join(APP_DIR, ".aidb_introspect_config.json")
+# Older locations (before the dashboard/ layout, and from Discover AIDB) are still read.
+LEGACY_CONFIG_PATHS = (
+    os.path.join(ROOT_DIR, ".aidb_introspect_config.json"),
+    os.path.join(ROOT_DIR, ".aidb_local_config.json"),
+    os.path.join(APP_DIR, ".aidb_local_config.json"),
+)
 
 app = Flask(__name__, static_folder=None)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
@@ -325,7 +349,8 @@ INVENTORY = [
      "SELECT name, owner, endpoint, shared, has_secret, can_use FROM aidb.credentials"),
     ("list_providers", "Providers (7.8+)", "SELECT * FROM aidb.list_providers()"),
     ("providers", "Model providers view", "SELECT * FROM aidb.model_providers"),
-    ("semantic_kbs", "Semantic KBs", "SELECT * FROM aidb.list_semantic_kbs()"),
+    ("semantic_kbs", "Semantic KBs (plugin_name from 7.9)", "SELECT * FROM aidb.list_semantic_kbs()"),
+    ("agent_plugins", "Agent plugins (7.9+)", "SELECT * FROM aidb.agent_plugins_registry"),
     ("semantic_kb_stats", "Semantic KB stats",
      "SELECT k.name AS kb_name, s.* FROM aidb.list_semantic_kbs() k, LATERAL aidb.semantic_kb_stats(k.name) s"),
     ("native_tools", "Native & SQL tools",
@@ -369,14 +394,26 @@ def inventory():
 # -----------------------------------------------------------------------
 @app.route("/")
 def index():
-    resp = send_from_directory(BASE_DIR, PAGE, conditional=False, etag=False, last_modified=False)
+    resp = send_from_directory(STATIC_DIR, PAGE, conditional=False, etag=False, last_modified=False)
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return resp
 
 
+@app.route("/static/<path:name>")
+def static_file(name):
+    # send_from_directory refuses paths that climb out of STATIC_DIR
+    return send_from_directory(STATIC_DIR, name)
+
+
+@app.route("/api/health", methods=["GET"])
+def health():
+    """Liveness only: answers without touching Postgres, so install/99_smoke_test.sh can run before a database is set up."""
+    return jsonify({"ok": True, "app": "aidb-showcase", "port": app.config.get("LISTEN_PORT", PORT)})
+
+
 @app.route("/api/local-config", methods=["GET"])
 def get_local_config():
-    for path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
+    for path in (CONFIG_PATH, *LEGACY_CONFIG_PATHS):
         if os.path.exists(path):
             try:
                 with open(path) as f:
@@ -489,7 +526,7 @@ TEXT_SECRET_RE = re.compile(
     r"(?:\\|\")*\s*[:=]\s*(?:\\|\")*)([^\"\\,{\[}\s][^\"\\,}]*)",
     re.I,
 )
-MAX_ROWS_PER_RESULT = 5000
+MAX_ROWS_PER_RESULT = int(CFG["max_rows_per_result"])
 
 
 def redact_text(text):
@@ -728,7 +765,11 @@ def console():
 
 
 if __name__ == "__main__":
-    print("AIDB 7.8 Introspector — local console")
-    print(f"Open http://127.0.0.1:{PORT} in your browser.")
-    print("Read-only: every query runs with default_transaction_read_only=on.\n")
-    app.run(host="127.0.0.1", port=PORT, debug=False)
+    ap = argparse.ArgumentParser(description="AIDB Showcase Console (binds to 127.0.0.1 only)")
+    ap.add_argument("--port", type=int, default=PORT, help=f"port to listen on (default {PORT}, from config.json)")
+    args = ap.parse_args()
+    app.config["LISTEN_PORT"] = args.port
+    print("AIDB Introspector — local console", flush=True)
+    print(f"Open http://127.0.0.1:{args.port} in your browser.", flush=True)
+    print("Read-only: every query runs with default_transaction_read_only=on.\n", flush=True)
+    app.run(host="127.0.0.1", port=args.port, debug=False)

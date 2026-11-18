@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
-# Loads the Northwind Outdoors demo into the database psql connects to.
-# Connection settings come from env.sh (this folder or the one above) or your own PG* variables.
+# Step 20 - load the Northwind Outdoors demo (sql/*.sql) into the database psql connects to.
+# Connection settings come from env.sh in the repository root, or your own PG* variables.
+# Run it from anywhere; it finds the sql/ folder next to install/.
 #
-#   bash run_demo_setup.sh                    sample data + models + semantic layer + documents + agents
-#   bash run_demo_setup.sh --with-governance  also run the optional read-only-role demo (needs a superuser)
-#   bash run_demo_setup.sh --check            only report what is ready
-#   bash run_demo_setup.sh --allow-huggingface  add huggingface.co to aidb.egress_allowlist (superuser)
-#   bash run_demo_setup.sh --diagnose-egress  show where the egress settings come from (read-only)
-#   bash run_demo_setup.sh --from 03          resume at step 03 (skips 01 and 02, so loaded data is not dropped and recreated)
-#   bash run_demo_setup.sh --force            continue even if the preflight says downloads are blocked
-#   bash run_demo_setup.sh --reset            remove everything the demo created
+#   ./install/20_load_demo.sh                    sample data + models + semantic layer + documents + agents
+#   ./install/20_load_demo.sh --with-governance  also run the optional read-only-role demo (needs a superuser)
+#   ./install/20_load_demo.sh --check            only report what is ready
+#   ./install/20_load_demo.sh --allow-huggingface  add huggingface.co to aidb.egress_allowlist (superuser)
+#   ./install/20_load_demo.sh --diagnose-egress  show where the egress settings come from (read-only)
+#   ./install/20_load_demo.sh --from 03          resume at step 03 (skips 01 and 02, so loaded data is not dropped and recreated)
+#   ./install/20_load_demo.sh --force            continue even if the preflight says downloads are blocked
+#   ./install/20_load_demo.sh --reset            remove everything the demo created
 set -euo pipefail
-cd "$(dirname "$0")"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SQL_DIR="$ROOT/sql"
+[ -d "$SQL_DIR" ] || { echo "Cannot find $SQL_DIR (expected next to install/)." >&2; exit 1; }
+cd "$SQL_DIR"
 
-# Connection settings: use env.sh from this folder or the one above it, if present
-for e in ./env.sh ../env.sh; do
-  if [ -f "$e" ]; then
-    . "$e"
-    echo "Connection settings loaded from $e -> ${PGUSER:-?}@${PGHOST:-local socket}:${PGPORT:-5432}/${PGDATABASE:-?}"
-    break
-  fi
-done
+# Connection settings: use env.sh from the repository root, if present
+if [ -f "$ROOT/env.sh" ]; then
+  . "$ROOT/env.sh"
+  echo "Connection settings loaded from $ROOT/env.sh -> ${PGUSER:-?}@${PGHOST:-local socket}:${PGPORT:-5432}/${PGDATABASE:-?}"
+fi
 
 CHECK=0; RESET=0; ALLOW_HF=0; GOV=0; FORCE=0; DIAG=0
 FROM=1
@@ -41,7 +42,7 @@ done
 
 run() { echo; echo "=== $1"; psql -X -v ON_ERROR_STOP=1 -f "$1"; }
 
-# All script files must sit in this folder next to run_demo_setup.sh. Check before running anything.
+# All SQL files must be in sql/. Check before running anything.
 need="00_preflight.sql 01_sample_data.sql 02_models_and_credentials.sql 03_semantic_layer.sql 04_documents.sql 05_agents_and_tools.sql check_ready.sql 99_reset.sql"
 [ "$ALLOW_HF" = 1 ] && need="$need 00_allow_huggingface.sql 00_diagnose_egress.sql"
 [ "$DIAG" = 1 ] && need="$need 00_diagnose_egress.sql"
@@ -50,7 +51,7 @@ missing=""
 for f in $need; do [ -f "$f" ] || missing="$missing $f"; done
 if [ -n "$missing" ]; then
   echo "These files are missing from $(pwd):$missing" >&2
-  echo "Copy the whole demo-data folder (or clone the whole repository) so every .sql file sits next to this script." >&2
+  echo "Clone the whole repository so every .sql file is in $SQL_DIR." >&2
   exit 1
 fi
 
@@ -59,7 +60,7 @@ if [ "$DIAG" = 1 ]; then run 00_diagnose_egress.sql; exit 0; fi
 if [ "$RESET" = 1 ]; then run 99_reset.sql; exit 0; fi
 if [ "$ALLOW_HF" = 1 ]; then
   run 00_allow_huggingface.sql
-  echo; echo "Now run: bash run_demo_setup.sh"; exit 0
+  echo; echo "Now run: ./install/20_load_demo.sh"; exit 0
 fi
 
 psql -X -tAc "SELECT 1 FROM pg_extension WHERE extname = 'aidb'" | grep -q 1 \
@@ -79,10 +80,10 @@ Stopping before anything is created: this server only allows outbound connection
 aidb.egress_allowlist, and the local models must download their files from Hugging Face once.
 
 Choose one:
-  1. Allow Hugging Face (superuser; keeps your existing entries):  bash run_demo_setup.sh --allow-huggingface
-     (if that does not change anything, run:  bash run_demo_setup.sh --diagnose-egress)
+  1. Allow Hugging Face (superuser; keeps your existing entries):  ./install/20_load_demo.sh --allow-huggingface
+     (if that does not change anything, run:  ./install/20_load_demo.sh --diagnose-egress)
   2. Ask the server owner to add: huggingface.co, .huggingface.co, hf.co, .hf.co
-  3. Work offline: copy the model files into the server's cache (see README section 9)
+  3. Work offline: copy the model files into the server's cache (see docs/egress.md)
 Then run this script again. To load only the plain sample data now, use --force.
 MSG
     exit 1
@@ -98,4 +99,4 @@ fi
 
 run check_ready.sql
 echo
-echo "Done. Start the Introspector (../start.sh) and open the Showcase."
+echo "Done. Start the console with ./reset-demo.sh and open the Showcase at http://127.0.0.1:8643"

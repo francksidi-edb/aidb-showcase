@@ -16,7 +16,7 @@ SELECT (:'allow' <> '' AND position('huggingface.co' in :'allow') = 0) AS hf_blo
   \echo
   \echo 'WARNING: an egress allowlist is set and it does not include huggingface.co.'
   \echo '         The first use of a local model will fail with "egress denied".'
-  \echo '         Fix: bash run_demo_setup.sh --allow-huggingface   (needs a superuser; see README)'
+  \echo '         Fix: ./install/20_load_demo.sh --allow-huggingface   (needs a superuser; see docs/egress.md)'
 \else
   \echo
   \echo 'OK: model downloads from huggingface.co are not blocked by an egress allowlist.'

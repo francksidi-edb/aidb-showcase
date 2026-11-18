@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AIDB 7.8 Introspector — EDB</title>
+<title>AIDB Introspector — EDB</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -34,6 +34,8 @@
   /* ---------- sidebar ---------- */
   aside{background:var(--deep);padding:22px 20px;border-right:1px solid var(--line);position:sticky;top:0;height:100vh;overflow-y:auto;}
   .brand{font-family:var(--disp);font-weight:700;font-size:24px;line-height:1.1;margin:0 0 2px;}
+  .brand-logo{display:block;background:#fff;border-radius:8px;padding:8px 12px;margin:0 0 14px;}
+  .brand-logo img{display:block;height:30px;width:auto;max-width:100%;}
   .brand small{display:block;font-family:var(--body);font-weight:400;font-size:12.5px;color:var(--mist);margin-top:4px;}
   .ver{display:inline-block;margin-top:10px;font-family:var(--mono);font-size:12px;background:var(--abyss);color:var(--gold);border-radius:6px;padding:3px 8px;}
   .conn{margin:20px 0 18px;display:grid;grid-template-columns:1fr 72px;gap:8px 8px;}
@@ -319,6 +321,7 @@
 <body>
 <div class="app">
   <aside>
+    <div class="brand-logo"><img src="/static/edb_logo.png" alt="EDB Postgres AI"></div>
     <div class="brand">AIDB Introspector<small>Read-only map of the aidb extension on your server</small></div>
     <span class="ver" id="verBadge">not connected</span>
 
@@ -330,7 +333,7 @@
       <div class="full"><label class="f" for="pgPassword">Password</label><input type="password" id="pgPassword" placeholder="blank for trust / peer / .pgpass"></div>
       <div class="full btnrow" style="margin-top:6px;">
         <button class="btn" id="btnConnect">Connect &amp; scan</button>
-        <button class="btn ghost small" id="btnSave" title="Save to .aidb_introspect_config.json next to the server">Save</button>
+        <button class="btn ghost small" id="btnSave" title="Save to dashboard/.aidb_introspect_config.json (git-ignored)">Save</button>
       </div>
       <label class="chkline full"><input type="checkbox" id="savePw"> Include password when saving</label>
     </div>
@@ -516,12 +519,12 @@ const CATS = [
   {id:'cred', name:'Credentials & egress', color:'var(--c-cred)', re:/credential|endpoint|egress/},
   {id:'config', name:'Config builders', color:'var(--c-config)', re:/_config(_from_kb)?$/},
   {id:'bdr', name:'Replication (PGD/BDR)', color:'var(--c-bdr)', re:/^bdr_/},
-  {id:'agents', name:'Agents & conversations', color:'var(--c-agents)', re:/agent|conversation|^get_message$|purpose/},
+  {id:'agents', name:'Agents & conversations', color:'var(--c-agents)', re:/agent|conversation|^get_message$|purpose|^memory_(add|search)$/},
   {id:'tools', name:'Tools & MCP', color:'var(--c-tools)', re:/tool|mcp|^params?$|^output_(field|type)$|^run_sql_query$|^sleep$/},
   {id:'semantic', name:'Semantic layer', color:'var(--c-semantic)', re:/semantic|relationship|join|comment|_definitions$|^get_metadata$|query_history|alias/},
   {id:'catalog', name:'Catalog & DB insight', color:'var(--c-catalog)', re:/^catalog_|^explain_query$|^analyze_db_health$/},
   {id:'pipe', name:'Pipelines & preparers', color:'var(--c-pipe)', re:/pipeline|preparer|^bulk_data_preparation$|error_log|error_summ/},
-  {id:'kb', name:'Knowledge bases & retrieval', color:'var(--c-kb)', re:/knowledge_base|retriever|^retrieve_|^kb_|^bulk_embedding$|^memory_search$|auto_embedding/},
+  {id:'kb', name:'Knowledge bases & retrieval', color:'var(--c-kb)', re:/knowledge_base|retriever|^retrieve_|^kb_|^bulk_embedding$|auto_embedding/},
   {id:'models', name:'Models & inference', color:'var(--c-models)', re:/model|provider|^encode_|^decode_|^generate_text|^rerank|hcp/},
   {id:'prep', name:'Parse, chunk, OCR, summarize', color:'var(--c-prep)', re:/^parse_|chunk|ocr|summar|^pdf_to_image$/},
   {id:'vol', name:'Volumes & storage', color:'var(--c-vol)', re:/volume|^_lo_/},
@@ -623,7 +626,7 @@ async function connect(){
     setStatus(`Connected to ${c.database} as ${c.user}.`);
     INV_PROMISE = loadInventory(); scStep = 0; renderShowcase();
   } catch(e){
-    setStatus("Couldn't reach the local server. Is aidb_introspect_server.py running? ("+e.message+")", true);
+    setStatus("Couldn't reach the local server. Is the console running? Start it with ./reset-demo.sh ("+e.message+")", true);
   } finally { btn.disabled=false; }
 }
 $('btnConnect').addEventListener('click', connect);
@@ -637,7 +640,7 @@ $('btnSave').addEventListener('click', async ()=>{
   try{
     const res = await fetch('/api/local-config',{method:'POST',headers:{'Content-Type':'application/json','X-Requested-By':'aidb-introspect'},body:JSON.stringify(Object.assign(connInfo(),{savePassword:$('savePw').checked}))});
     const d = await res.json();
-    setStatus(d.ok ? 'Connection saved to .aidb_introspect_config.json (readable only by you).' : d.error, !d.ok);
+    setStatus(d.ok ? 'Connection saved to dashboard/.aidb_introspect_config.json (readable only by you).' : d.error, !d.ok);
   } catch(e){ setStatus("Couldn't reach the local server: "+e.message, true); }
 });
 (async function loadSaved(){
@@ -950,6 +953,9 @@ const PRESETS = [
   ['Pipeline errors', "SELECT * FROM aidb.get_all_error_summaries();"],
   ['aidb GUCs', "SELECT name, setting, source FROM pg_settings WHERE name LIKE 'aidb.%';"],
   ['Extensions', "\\dx"],
+  ['Agent plugins (7.9+)', "SELECT * FROM aidb.agent_plugins_registry;"],
+  ['KB plugin name (7.9+)', "SELECT name, plugin_name FROM aidb.list_semantic_kbs();"],
+  ['Telemetry source (7.9+, needs aidb_governance)', "SELECT source, count(*) AS spans\nFROM aidb_otel.traces\nGROUP BY source;"],
 ];
 let editor = null, fmt = 'grid', lastRun = null;
 const LS_SQL='aidb_introspect.sql', LS_HIST='aidb_introspect.history';
@@ -1320,7 +1326,7 @@ const SC_STEPS = [
    plain:'Pipelines keep your AI-ready data up to date in the background. AIDB records anything that failed, and you can run a health check or compare this server with an earlier version.',
    example:'<b>In a business:</b> a Monday-morning check shows whether last night’s document import finished cleanly.',
    why:'Operations teams get a plain answer to “is it working?” and “what changed since the upgrade?”.',
-   notes:'A clean error summary is a good result. The compare page needs a snapshot file from an older server; download one from 7.7 beforehand to show what 7.8 added.',
+   notes:'A clean error summary is a good result. The compare page needs a snapshot file from an older server; download one from the previous version beforehand (7.8, to show what 7.9 added).',
    sql:'SELECT * FROM aidb.get_all_error_summaries();', render: scHealth },
 ];
 
@@ -1376,7 +1382,7 @@ async function scKeys(box){
   let html = `<div class="sc-callout"><span class="ic">•••</span><span>This page never shows a key. Anything stored under a name like <code>api_key</code> or <code>password</code> is replaced with “redacted” on the server before it reaches your browser.</span></div>`;
   html += `<div class="sc-tiles">${creds?tile(creds.length,'named credentials'):tile('7.8+','named credentials')}${creds?tile(creds.filter(c=>c.has_secret===true).length,'hold a stored key'):''}${leaks?tile(leaks.length,leaks.length?'leaked keys found':'leaked keys found', leaks.length?'bad':'good'):''}${egress?tile(egressOn?'on':'off','insecure outbound calls allowed',egressOn?'bad':'good'):''}${allow?tile(allowList.length?allowList.length+' sites':'open',allowList.length?'outbound calls limited to this allowlist':'no outbound allowlist set',allowList.length?'good':'warn'):''}</div>`;
   if (!creds) html += `<div class="sc-empty"><strong>Named credentials aren't on this server</strong>They arrived in AIDB 7.8. This server doesn't expose <code>aidb.credentials</code>, so it is probably running an earlier version.</div>`;
-  else if (!creds.length) html += `<div class="sc-empty"><strong>No credentials yet</strong>Run <code>demo-data/02_models_and_credentials.sql</code>, or create one with <code>aidb.create_credential()</code> and attach it to a model with <code>credential =&gt; 'name'</code>.</div>`;
+  else if (!creds.length) html += `<div class="sc-empty"><strong>No credentials yet</strong>Run <code>sql/02_models_and_credentials.sql</code>, or create one with <code>aidb.create_credential()</code> and attach it to a model with <code>credential =&gt; 'name'</code>.</div>`;
   else html += `<h3>Credentials on this server</h3><div class="sc-cards">${creds.map(c=>`<div class="sc-card"><h4>${esc(c.name)}</h4>
       <div class="row"><span>Key stored</span><b class="${c.has_secret===true?'good':''}">${yn(c.has_secret)}</b></div>
       <div class="row"><span>Shared with other roles</span><b>${yn(c.shared)}</b></div>
@@ -1394,7 +1400,7 @@ async function scSemantic(box){
   const kbs=invRows('semantic_kbs'), stats=invRows('semantic_kb_stats')||[];
   if (!kbs) return box.innerHTML = scErr({message:(INV.find(i=>i.key==='semantic_kbs')||{}).error||'Semantic knowledge bases could not be listed.'});
   if (!kbs.length){
-    box.innerHTML = `<div class="sc-empty"><strong>No semantic knowledge base yet</strong>Run <code>demo-data/03_semantic_layer.sql</code>, or create one over your own schema and AIDB will index the tables, columns and comments for you.
+    box.innerHTML = `<div class="sc-empty"><strong>No semantic knowledge base yet</strong>Run <code>sql/03_semantic_layer.sql</code>, or create one over your own schema and AIDB will index the tables, columns and comments for you.
       <div class="sc-actions"><button class="btn ghost small" id="scMk">Open the example in the SQL editor</button></div></div>`;
     $('scMk').addEventListener('click',()=>openInEditor("-- indexes your tables so questions can be matched to them\nSELECT aidb.create_semantic_kb(\n  name => 'demo_kb',\n  model => 'bert',\n  schemas => ARRAY['public']\n);"));
     return;
@@ -1489,7 +1495,7 @@ async function scAgents(box){
   html += `<h3>Ask an agent</h3>`;
   if (names.length) html += `<p class="sc-sub">Asking records the conversation in the database, so it needs confirmation. The agent is started in read-only mode.</p>
     <div class="sc-ask"><select id="scAg" style="max-width:240px;font-family:var(--body);font-size:15px;">${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><textarea id="scPr" placeholder="e.g. How many customers are in each region?"></textarea><button class="btn" id="scAsk2">Ask</button></div><div id="scAgOut"></div>`;
-  else html += `<div class="sc-empty"><strong>${agentRel?'No agents defined yet':'Agents not found on this server'}</strong>Run <code>demo-data/05_agents_and_tools.sql</code>, or create one with <code>aidb.create_agent()</code>. It will appear here.
+  else html += `<div class="sc-empty"><strong>${agentRel?'No agents defined yet':'Agents not found on this server'}</strong>Run <code>sql/05_agents_and_tools.sql</code>, or create one with <code>aidb.create_agent()</code>. It will appear here.
       <div class="sc-actions"><button class="btn ghost small" id="scMkAg">Open an example in the SQL editor</button></div></div>`;
   box.innerHTML = html;
   const mk=$('scMkAg'); if(mk) mk.addEventListener('click',()=>openInEditor("SELECT * FROM aidb.create_agent(\n  name => 'demo_agent',\n  instructions => 'Answer questions about our data. Use the tools you are given.',\n  model => 'qwen3.5-0.8b-Q8_0',\n  tools => ARRAY['run_sql_query']\n);"));
@@ -1539,24 +1545,24 @@ async function scReadiness(){
     try{ agents=await scSql('SELECT name FROM aidb.agents'); }catch(e){}
     const checks=[
       ['Step 2','Built-in local model (bert)', models.some(m=>m.name==='bert'), 'Built in. If missing, check the AIDB installation.'],
-      ['Step 3','Named credential (7.8)', creds.some(c=>c.name!=='none'), 'demo-data/02_models_and_credentials.sql'],
-      ['Steps 4, 5','Semantic knowledge base', kbs.length>0, 'demo-data/03_semantic_layer.sql'],
-      ['Step 4','Saved queries', aliases.length>0, 'demo-data/03_semantic_layer.sql'],
-      ['Step 5','Document knowledge base', docKbs.length>0, 'demo-data/04_documents.sql'],
-      ['Step 6','Custom tool', tools.some(t=>t.name==='customer_open_tickets'), 'demo-data/05_agents_and_tools.sql'],
-      ['Step 6','An agent to ask', agents.length>0, 'demo-data/05_agents_and_tools.sql'],
+      ['Step 3','Named credential (7.8)', creds.some(c=>c.name!=='none'), 'sql/02_models_and_credentials.sql'],
+      ['Steps 4, 5','Semantic knowledge base', kbs.length>0, 'sql/03_semantic_layer.sql'],
+      ['Step 4','Saved queries', aliases.length>0, 'sql/03_semantic_layer.sql'],
+      ['Step 5','Document knowledge base', docKbs.length>0, 'sql/04_documents.sql'],
+      ['Step 6','Custom tool', tools.some(t=>t.name==='customer_open_tickets'), 'sql/05_agents_and_tools.sql'],
+      ['Step 6','An agent to ask', agents.length>0, 'sql/05_agents_and_tools.sql'],
       ['Step 7','No failed pipeline steps', errs!==null && errs.length===0, 'Open step 7 to see what failed.'],
     ];
     const ok=checks.filter(c=>c[2]).length;
     box.innerHTML = `<div class="sc-tiles">${tile(ok+' of '+checks.length,'demo pieces ready',ok===checks.length?'good':'warn')}</div>`
       + checks.map(c=>`<div class="sc-join"><span class="sc-pill ${c[2]?'good':'bad'}">${c[2]?'ready':'missing'}</span><b>${esc(c[1])}</b><span class="sc-sub" style="margin:0;">${esc(c[0])}</span>${c[2]?'':`<code>${esc(c[3])}</code>`}</div>`).join('')
-      + `<p class="sc-sub" style="margin-top:14px;">To set everything up, run <code>demo-data/run_demo_setup.sh</code> in a terminal. Details are in the README.</p>`;
+      + `<p class="sc-sub" style="margin-top:14px;">To set everything up, run <code>install/20_load_demo.sh</code> in a terminal. Details are in the README.</p>`;
   }catch(e){ box.innerHTML=scErr(e); }
 }
 $('scReadyBtn').addEventListener('click',scReadiness);
 
 
-/* ---- ready-to-run queries for each step (they use the demo data from demo-data/) ---- */
+/* ---- ready-to-run queries for each step (they use the demo data from sql/) ---- */
 const SC_QUERIES = {
  0:[
   {label:'How many commands does AIDB add?', sql:"SELECT count(*) AS commands\nFROM pg_proc\nWHERE pronamespace = 'aidb'::regnamespace;",

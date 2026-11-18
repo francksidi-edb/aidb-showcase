@@ -26,7 +26,8 @@ DO $do$
 BEGIN
   PERFORM aidb.create_purpose('shop_read_only', 'shop_readonly', 'Read-only access to the shop schema');
 EXCEPTION WHEN OTHERS THEN
-  RAISE NOTICE 'create_purpose skipped: %', SQLERRM;
+  RAISE WARNING 'create_purpose failed: %. From AIDB 7.9 create_purpose runs with your own privileges, '
+                'so run this script as a superuser or a member of aidb_governance.', SQLERRM;
 END
 $do$;
 

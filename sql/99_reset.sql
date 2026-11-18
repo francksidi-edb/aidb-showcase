@@ -4,7 +4,7 @@
 DO $do$ BEGIN PERFORM aidb.delete_agent('shop_helpdesk');        EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'skip: %', SQLERRM; END $do$;
 DO $do$ BEGIN PERFORM aidb.delete_agent('shop_readonly_agent');  EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'skip: %', SQLERRM; END $do$;
 DO $do$ BEGIN PERFORM aidb.delete_agent('shop_analyst');         EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'skip: %', SQLERRM; END $do$;
-DO $do$ BEGIN PERFORM aidb.delete_purpose('shop_read_only');     EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'skip: %', SQLERRM; END $do$;
+DO $do$ BEGIN PERFORM aidb.delete_purpose('shop_read_only');     EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'skip: % (from AIDB 7.9 deleting a purpose needs aidb_governance)', SQLERRM; END $do$;
 DO $do$ BEGIN PERFORM aidb.delete_tool('customer_open_tickets'); EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'skip: %', SQLERRM; END $do$;
 DO $do$ BEGIN PERFORM aidb.delete_semantic_alias('monthly_revenue');   EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'skip: %', SQLERRM; END $do$;
 DO $do$ BEGIN PERFORM aidb.delete_semantic_alias('repeat_customers');  EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'skip: %', SQLERRM; END $do$;
